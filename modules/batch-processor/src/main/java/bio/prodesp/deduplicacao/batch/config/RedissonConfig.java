@@ -1,4 +1,4 @@
-package br.gov.sp.prodesp.deduplicacao.batch.config;
+package bio.prodesp.deduplicacao.batch.config;
 
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;

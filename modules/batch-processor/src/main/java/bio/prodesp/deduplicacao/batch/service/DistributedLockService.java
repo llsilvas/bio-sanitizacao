@@ -1,4 +1,4 @@
-package br.gov.sp.prodesp.deduplicacao.batch.service;
+package bio.prodesp.deduplicacao.batch.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

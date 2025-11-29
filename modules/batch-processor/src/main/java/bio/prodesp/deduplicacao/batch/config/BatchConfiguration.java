@@ -1,11 +1,6 @@
-package br.gov.sp.prodesp.deduplicacao.batch.config;
+package bio.prodesp.deduplicacao.batch.config;
 
-import br.gov.sp.prodesp.deduplicacao.batch.listener.JobCompletionListener;
-import br.gov.sp.prodesp.deduplicacao.batch.listener.StepExecutionListener;
-import br.gov.sp.prodesp.deduplicacao.batch.partition.BiometricRecordPartitioner;
-import br.gov.sp.prodesp.deduplicacao.batch.processor.BiometricDocumentProcessor;
-import br.gov.sp.prodesp.deduplicacao.batch.service.DistributedLockService;
-import br.gov.sp.prodesp.deduplicacao.model.dto.BiometricDocument;
+import bio.prodesp.deduplicacao.commons.model.dto.ColetaRecord;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.Job;
@@ -23,6 +18,12 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 
+import bio.prodesp.deduplicacao.batch.listener.JobCompletionListener;
+import bio.prodesp.deduplicacao.batch.listener.StepExecutionListener;
+import bio.prodesp.deduplicacao.batch.partition.BiometricRecordPartitioner;
+import bio.prodesp.deduplicacao.batch.processor.ColetaRecordProcessor;
+import bio.prodesp.deduplicacao.batch.service.DistributedLockService;
+
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
@@ -31,7 +32,7 @@ public class BatchConfiguration {
     private final JobRepository jobRepository;
     private final PlatformTransactionManager transactionManager;
     private final BiometricRecordPartitioner partitioner;
-    private final BiometricDocumentProcessor documentProcessor;
+    private final ColetaRecordProcessor coletaRecordProcessor;
     private final DistributedLockService lockService;
 
     @Value("${batch.partition.grid-size:10}")
@@ -105,15 +106,15 @@ public class BatchConfiguration {
      */
     @Bean
     public Step workerStep(
-            ItemReader<BiometricDocument> biometricDocumentItemReader,
-            ItemWriter<BiometricDocument> biometricDocumentItemWriter,
+            ItemReader<ColetaRecord> coletaRecordItemReader,
+            ItemWriter<ColetaRecord> coletaRecordItemWriter,
             StepExecutionListener stepListener) {
 
         return new StepBuilder("workerStep", jobRepository)
-                .<BiometricDocument, BiometricDocument>chunk(chunkSize, transactionManager)
-                .reader(biometricDocumentItemReader)
-                .processor(documentProcessor)
-                .writer(biometricDocumentItemWriter)
+                .<ColetaRecord, ColetaRecord>chunk(chunkSize, transactionManager)
+                .reader(coletaRecordItemReader)
+                .processor(coletaRecordProcessor)
+                .writer(coletaRecordItemWriter)
                 .listener(stepListener)
                 .faultTolerant()
                 .skipLimit(100)

@@ -1,6 +1,6 @@
-package br.gov.sp.prodesp.deduplicacao.batch.service;
+package bio.prodesp.deduplicacao.batch.service;
 
-import br.gov.sp.prodesp.deduplicacao.model.dto.BiometricDocument;
+import bio.prodesp.deduplicacao.commons.model.domain.ColetaMetadata;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.opensearch.client.opensearch.OpenSearchClient;
@@ -28,7 +28,7 @@ public class OpenSearchService {
 
     private final OpenSearchClient openSearchClient;
 
-    @Value("${opensearch.index:biometric-data}")
+    @Value("${opensearch.index:coletas}")
     private String indexName;
 
     @Value("${opensearch.scroll.timeout:5m}")
@@ -38,31 +38,34 @@ public class OpenSearchService {
     private int scrollSize;
 
     /**
-     * Busca documentos não processados de uma partição específica usando scroll
+     * Busca coletas não processadas de uma partição específica usando scroll
      *
-     * @param partitionNumber número da partição
+     * @param partitionNumber número da partição (baseado em hash do CPF)
      * @param totalPartitions total de partições
-     * @return response com scroll ID e documentos
+     * @return response com scroll ID e coletas
      */
-    public SearchResponse<BiometricDocument> searchUnprocessedByPartition(
+    public SearchResponse<ColetaMetadata> searchUnprocessedByPartition(
             int partitionNumber,
             int totalPartitions) throws IOException {
 
         log.info("Searching OpenSearch for partition {} of {}", partitionNumber, totalPartitions);
 
-        // Query para filtrar por partição e registros não processados
-        Query processedQuery = TermQuery.of(t -> t
-                .field("processed")
+        // Query para filtrar coletas não processadas
+        // Critério: validacaoPendente = false (RN003)
+        Query validacaoPendenteQuery = TermQuery.of(t -> t
+                .field("validacaoPendente")
                 .value(FieldValue.of(false))
         )._toQuery();
 
+        // Query para filtrar por partição baseada no CPF
+        // partition_key = hash(cpf) % totalPartitions
         Query partitionQuery = TermQuery.of(t -> t
                 .field("partition_key")
                 .value(FieldValue.of(partitionNumber))
         )._toQuery();
 
         BoolQuery boolQuery = BoolQuery.of(b -> b
-                .must(processedQuery)
+                .must(validacaoPendenteQuery)
                 .must(partitionQuery)
         );
 
@@ -71,16 +74,16 @@ public class OpenSearchService {
                 .query(boolQuery._toQuery())
                 .size(scrollSize)
                 .scroll(t -> t.time(scrollTimeout))
-                .sort(so -> so.field(f -> f.field("document_number").order(SortOrder.Asc)))
-                .sort(so -> so.field(f -> f.field("_id").order(SortOrder.Asc)))
+                .sort(so -> so.field(f -> f.field("cpf").order(SortOrder.Asc)))
+                .sort(so -> so.field(f -> f.field("idColeta").order(SortOrder.Asc)))
         );
 
-        SearchResponse<BiometricDocument> response = openSearchClient.search(
+        SearchResponse<ColetaMetadata> response = openSearchClient.search(
                 searchRequest,
-                BiometricDocument.class
+                ColetaMetadata.class
         );
 
-        log.info("Found {} documents in partition {}, scroll ID: {}",
+        log.info("Found {} coletas in partition {}, scroll ID: {}",
                 response.hits().hits().size(),
                 partitionNumber,
                 response.scrollId());
@@ -94,7 +97,7 @@ public class OpenSearchService {
      * @param scrollId ID do scroll anterior
      * @return próxima página de resultados
      */
-    public ScrollResponse<BiometricDocument> scroll(String scrollId) throws IOException {
+    public ScrollResponse<ColetaMetadata> scroll(String scrollId) throws IOException {
         log.debug("Scrolling with ID: {}", scrollId);
 
         ScrollRequest scrollRequest = ScrollRequest.of(s -> s
@@ -102,7 +105,7 @@ public class OpenSearchService {
                 .scroll(t -> t.time(scrollTimeout))
         );
 
-        return openSearchClient.scroll(scrollRequest, BiometricDocument.class);
+        return openSearchClient.scroll(scrollRequest, ColetaMetadata.class);
     }
 
     /**
@@ -120,45 +123,45 @@ public class OpenSearchService {
     }
 
     /**
-     * Busca todos os documentos de uma partição (sem paginação, para testes)
+     * Busca todas as coletas de uma partição (sem paginação, para testes)
      *
      * @param partitionNumber número da partição
      * @param totalPartitions total de partições
      * @param size número máximo de resultados
-     * @return lista de documentos
+     * @return lista de coletas
      */
-    public List<BiometricDocument> findUnprocessedByPartition(
+    public List<ColetaMetadata> findUnprocessedByPartition(
             int partitionNumber,
             int totalPartitions,
             int size) throws IOException {
 
-        SearchResponse<BiometricDocument> response = searchUnprocessedByPartition(
+        SearchResponse<ColetaMetadata> response = searchUnprocessedByPartition(
                 partitionNumber,
                 totalPartitions
         );
 
-        List<BiometricDocument> documents = new ArrayList<>();
-        for (Hit<BiometricDocument> hit : response.hits().hits()) {
-            documents.add(hit.source());
+        List<ColetaMetadata> coletas = new ArrayList<>();
+        for (Hit<ColetaMetadata> hit : response.hits().hits()) {
+            coletas.add(hit.source());
         }
 
-        log.info("Retrieved {} documents for partition {}", documents.size(), partitionNumber);
-        return documents;
+        log.info("Retrieved {} coletas for partition {}", coletas.size(), partitionNumber);
+        return coletas;
     }
 
     /**
-     * Conta documentos não processados em uma partição
+     * Conta coletas não processadas em uma partição
      *
      * @param partitionNumber número da partição
      * @param totalPartitions total de partições
-     * @return contagem de documentos
+     * @return contagem de coletas
      */
     public long countUnprocessedByPartition(
             int partitionNumber,
             int totalPartitions) throws IOException {
 
-        Query processedQuery = TermQuery.of(t -> t
-                .field("processed")
+        Query validacaoPendenteQuery = TermQuery.of(t -> t
+                .field("validacaoPendente")
                 .value(FieldValue.of(false))
         )._toQuery();
 
@@ -168,7 +171,7 @@ public class OpenSearchService {
         )._toQuery();
 
         BoolQuery boolQuery = BoolQuery.of(b -> b
-                .must(processedQuery)
+                .must(validacaoPendenteQuery)
                 .must(partitionQuery)
         );
 
@@ -178,7 +181,7 @@ public class OpenSearchService {
         );
 
         long count = countResponse.count();
-        log.info("Partition {} has {} unprocessed documents", partitionNumber, count);
+        log.info("Partition {} has {} unprocessed coletas", partitionNumber, count);
         return count;
     }
 }

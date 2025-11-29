@@ -1,12 +1,13 @@
-package br.gov.sp.prodesp.deduplicacao.batch.listener;
+package bio.prodesp.deduplicacao.batch.listener;
 
-import br.gov.sp.prodesp.deduplicacao.batch.service.DistributedLockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
 import org.springframework.stereotype.Component;
+
+import bio.prodesp.deduplicacao.batch.service.DistributedLockService;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
