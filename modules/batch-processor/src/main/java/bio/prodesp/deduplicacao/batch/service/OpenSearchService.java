@@ -48,45 +48,92 @@ public class OpenSearchService {
             int partitionNumber,
             int totalPartitions) throws IOException {
 
-        log.info("Searching OpenSearch for partition {} of {}", partitionNumber, totalPartitions);
+        log.info("Searching OpenSearch for partition {} of {} (index: {})",
+                partitionNumber, totalPartitions, indexName);
 
-        // Query para filtrar coletas não processadas
-        // Critério: validacaoPendente = false (RN003)
+        // ===== CONSTRUÇÃO DA QUERY =====
+
+        // Filtro 1: Coletas não processadas
+        // Busca documentos onde processado = false OU processado não existe
+        Query processadoQuery = BoolQuery.of(b -> b
+                .should(TermQuery.of(t -> t
+                        .field("processado")
+                        .value(FieldValue.of(false))
+                )._toQuery())
+                .should(q -> q.bool(bq -> bq
+                        .mustNot(mn -> mn.exists(e -> e.field("processado")))
+                ))
+                .minimumShouldMatch("1")
+        )._toQuery();
+
+        // Filtro 2: Validação pendente = false (RN003)
         Query validacaoPendenteQuery = TermQuery.of(t -> t
                 .field("validacaoPendente")
                 .value(FieldValue.of(false))
         )._toQuery();
 
-        // Query para filtrar por partição baseada no CPF
-        // partition_key = hash(cpf) % totalPartitions
+        // Filtro 3: Partição baseada no CPF (hash % totalPartitions)
         Query partitionQuery = TermQuery.of(t -> t
                 .field("partition_key")
                 .value(FieldValue.of(partitionNumber))
         )._toQuery();
 
+        // Bool Query: usa filter (não must) para melhor performance
+        // Filter não calcula relevance score, apenas filtra
         BoolQuery boolQuery = BoolQuery.of(b -> b
-                .must(validacaoPendenteQuery)
-                .must(partitionQuery)
+                .filter(processadoQuery)
+                .filter(validacaoPendenteQuery)
+                .filter(partitionQuery)
         );
+
+        // ===== CONSTRUÇÃO DO SEARCH REQUEST =====
 
         SearchRequest searchRequest = SearchRequest.of(s -> s
                 .index(indexName)
                 .query(boolQuery._toQuery())
                 .size(scrollSize)
                 .scroll(t -> t.time(scrollTimeout))
+                // Sort: garante ordem consistente entre scrolls
                 .sort(so -> so.field(f -> f.field("cpf").order(SortOrder.Asc)))
                 .sort(so -> so.field(f -> f.field("idColeta").order(SortOrder.Asc)))
+                // Source filtering: retorna apenas campos necessários (reduz payload)
+                // Comentado por enquanto - retorna todos os campos
+                // .source(src -> src
+                //     .filter(f -> f
+                //         .includes("idColeta", "cpf", "dataNascimento", "dadosBiometricos")
+                //         .excludes("auditoria", "metadados")
+                //     )
+                // )
+                // Track total hits: útil para logs e métricas
+                .trackTotalHits(t -> t.enabled(true))
         );
 
+        // ===== EXECUÇÃO DA QUERY =====
+
+        long startTime = System.currentTimeMillis();
         SearchResponse<ColetaMetadata> response = openSearchClient.search(
                 searchRequest,
                 ColetaMetadata.class
         );
+        long duration = System.currentTimeMillis() - startTime;
 
-        log.info("Found {} coletas in partition {}, scroll ID: {}",
-                response.hits().hits().size(),
+        // ===== LOGGING E MÉTRICAS =====
+
+        log.info("OpenSearch query executed in {}ms for partition {}/{}: " +
+                "found {} coletas (total: {}), scroll ID: {}",
+                duration,
                 partitionNumber,
+                totalPartitions,
+                response.hits().hits().size(),
+                response.hits().total() != null ? response.hits().total().value() : "unknown",
                 response.scrollId());
+
+        // Log de warning se não encontrou nada
+        if (response.hits().hits().isEmpty()) {
+            log.warn("No coletas found for partition {}/{}. " +
+                    "Check if partition_key field exists and is correctly populated.",
+                    partitionNumber, totalPartitions);
+        }
 
         return response;
     }

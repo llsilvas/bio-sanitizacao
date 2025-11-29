@@ -25,6 +25,9 @@ import bio.prodesp.deduplicacao.batch.processor.ColetaRecordProcessor;
 import bio.prodesp.deduplicacao.batch.reader.OpenSearchItemReader;
 import bio.prodesp.deduplicacao.batch.service.DistributedLockService;
 import bio.prodesp.deduplicacao.batch.service.OpenSearchService;
+import bio.prodesp.deduplicacao.batch.writer.OpenSearchItemWriter;
+import jakarta.annotation.PostConstruct;
+import org.opensearch.client.opensearch.OpenSearchClient;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 
 @Slf4j
@@ -43,6 +46,38 @@ public class BatchConfiguration {
 
     @Value("${batch.chunk-size:100}")
     private int chunkSize;
+
+    @Value("${opensearch.scroll.size:500}")
+    private int scrollSize;
+
+    /**
+     * Valida configurações de performance no startup
+     */
+    @PostConstruct
+    public void validateConfiguration() {
+        log.info("=== Batch Configuration ===");
+        log.info("Grid Size (partitions): {}", gridSize);
+        log.info("Chunk Size (commit interval): {}", chunkSize);
+        log.info("Scroll Size (OpenSearch page): {}", scrollSize);
+
+        // Validação: scroll size deve ser >= chunk size
+        if (scrollSize < chunkSize) {
+            log.warn("⚠️  WARNING: opensearch.scroll.size ({}) < batch.chunk-size ({})! " +
+                    "This will cause multiple scroll requests per chunk, reducing performance. " +
+                    "Recommended: scroll.size >= {} (5x chunk-size)",
+                    scrollSize, chunkSize, chunkSize * 5);
+        } else if (scrollSize >= chunkSize * 5) {
+            log.info("✅ Optimal configuration: scroll.size ({}) >= 5x chunk-size ({})",
+                    scrollSize, chunkSize * 5);
+        } else {
+            log.info("✓ Acceptable configuration: scroll.size ({}) >= chunk-size ({})",
+                    scrollSize, chunkSize);
+        }
+
+        log.info("Expected throughput: {} coletas/partition/commit", chunkSize);
+        log.info("Expected parallel throughput: {} coletas/commit (across {} partitions)",
+                chunkSize * gridSize, gridSize);
+    }
 
     /**
      * Thread pool para execução paralela das partições
@@ -144,6 +179,25 @@ public class BatchConfiguration {
                 partitionNumber, totalPartitions);
 
         return new OpenSearchItemReader(openSearchService, partitionNumber, totalPartitions);
+    }
+
+    /**
+     * ItemWriter com escopo de step - cada partição cria sua própria instância
+     *
+     * @StepScope garante que um novo writer é criado para cada partição
+     * Os valores #{stepExecutionContext[...]} são injetados pelo partitioner
+     */
+    @Bean
+    @StepScope
+    public ItemWriter<ColetaRecord> coletaRecordItemWriter(
+            OpenSearchClient openSearchClient,
+            @Value("#{stepExecutionContext['partitionNumber']}") Integer partitionNumber,
+            @Value("${opensearch.index:biometric-data}") String indexName) {
+
+        log.info("Creating OpenSearchItemWriter for partition {} with index {}",
+                partitionNumber, indexName);
+
+        return new OpenSearchItemWriter(openSearchClient, indexName, partitionNumber);
     }
 
     /**

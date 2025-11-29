@@ -20,6 +20,8 @@ import java.util.Map;
 /**
  * ItemWriter para atualizar coletas processadas no OpenSearch
  * Persiste os resultados do processamento (statusValidacao, abisEncounterId, matchScore)
+ *
+ * IMPORTANTE: Esta classe NÃO é um Spring Bean. Cada partição cria uma instância própria.
  */
 @Slf4j
 @RequiredArgsConstructor

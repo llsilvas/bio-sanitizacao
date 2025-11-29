@@ -47,8 +47,13 @@ opensearch:
     verify: ${OPENSEARCH_SSL_VERIFY:false}
   index: ${OPENSEARCH_INDEX:biometric-data}
   scroll:
+    # Timeout do scroll context - quanto tempo o OpenSearch mantém o cursor aberto
+    # Recomendação: tempo suficiente para processar um batch completo
     timeout: ${OPENSEARCH_SCROLL_TIMEOUT:5m}
-    size: ${OPENSEARCH_SCROLL_SIZE:1000}
+    # Tamanho do scroll = quantos documentos retornar por scroll
+    # IMPORTANTE: Deve ser >= chunk-size para minimizar roundtrips
+    # Recomendação: 5-10x o chunk-size para buffer
+    size: ${OPENSEARCH_SCROLL_SIZE:500}
 
 deduplicacao:
   service:
@@ -56,8 +61,11 @@ deduplicacao:
 
 batch:
   partition:
+    # Número de partições paralelas (threads)
     grid-size: ${BATCH_PARTITION_GRID_SIZE:10}
-  chunk-size: 100
+  # Número de registros processados por transação/commit
+  # Recomendação: 50-200 para balancear performance e rollback
+  chunk-size: ${BATCH_CHUNK_SIZE:100}
 
 server:
   port: 8081
