@@ -32,6 +32,10 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
         <dependency>
@@ -92,7 +96,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>br.gov.sp.prodesp.deduplicacao.service.DeduplicacaoServiceApplication</mainClass>
+                    <mainClass>bio.prodesp.deduplicacao.service.DeduplicacaoServiceApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>
