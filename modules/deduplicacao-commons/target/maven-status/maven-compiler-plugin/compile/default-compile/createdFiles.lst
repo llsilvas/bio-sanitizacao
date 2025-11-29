@@ -15,6 +15,7 @@ bio/prodesp/deduplicacao/commons/model/domain/DadosColetaMetadata.class
 bio/prodesp/deduplicacao/commons/model/dto/osia/Encounter.class
 bio/prodesp/deduplicacao/commons/model/domain/DadoBiometricoMetadata.class
 bio/prodesp/deduplicacao/commons/model/dto/osia/BiometricDataOSIA$FingerprintOSIA.class
+bio/prodesp/deduplicacao/commons/model/dto/ColetaRecord$ColetaRecordBuilder.class
 bio/prodesp/deduplicacao/commons/model/domain/EmissaoDocumentoMetadata.class
 bio/prodesp/deduplicacao/commons/exception/CriterioEntradaException.class
 bio/prodesp/deduplicacao/commons/model/dto/ResultadoDeduplicacao.class
@@ -43,6 +44,7 @@ bio/prodesp/deduplicacao/commons/model/domain/SoftwareCapturaMetadata$SoftwareCa
 bio/prodesp/deduplicacao/commons/model/dto/osia/IdentifyResponse$IdentifyResponseBuilder.class
 bio/prodesp/deduplicacao/commons/model/dto/osia/VerifyResponse$VerifyResponseBuilder.class
 bio/prodesp/deduplicacao/commons/model/dto/osia/Candidate.class
+bio/prodesp/deduplicacao/commons/model/dto/ColetaRecord.class
 bio/prodesp/deduplicacao/commons/model/dto/osia/IdentifyRequest$IdentifyFilters$IdentifyFiltersBuilder.class
 bio/prodesp/deduplicacao/commons/model/dto/osia/BiometricDataOSIA$FaceImageOSIA.class
 bio/prodesp/deduplicacao/commons/model/dto/osia/EncountersResponse$EncountersResponseBuilder.class

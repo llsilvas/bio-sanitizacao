@@ -13,6 +13,7 @@
 /home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/deduplicacao-commons/src/main/java/bio/prodesp/deduplicacao/commons/model/domain/RenachMetadata.java
 /home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/deduplicacao-commons/src/main/java/bio/prodesp/deduplicacao/commons/model/domain/SoftwareCapturaMetadata.java
 /home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/deduplicacao-commons/src/main/java/bio/prodesp/deduplicacao/commons/model/domain/TemplateMetadata.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/deduplicacao-commons/src/main/java/bio/prodesp/deduplicacao/commons/model/dto/ColetaRecord.java
 /home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/deduplicacao-commons/src/main/java/bio/prodesp/deduplicacao/commons/model/dto/ResultadoDeduplicacao.java
 /home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/deduplicacao-commons/src/main/java/bio/prodesp/deduplicacao/commons/model/dto/osia/BiometricDataOSIA.java
 /home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/deduplicacao-commons/src/main/java/bio/prodesp/deduplicacao/commons/model/dto/osia/Candidate.java
