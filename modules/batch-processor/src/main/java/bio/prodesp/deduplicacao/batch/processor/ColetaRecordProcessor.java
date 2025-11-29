@@ -104,6 +104,9 @@ public class ColetaRecordProcessor implements ItemProcessor<ColetaRecord, Coleta
     /**
      * Chama o serviço de deduplicação via REST
      * Endpoint: POST /api/v1/deduplicacao/processar
+     *
+     * <p>IMPORTANTE: O endpoint espera DeduplicacaoRequest (DTO), não ColetaMetadata (domain).
+     * Como o batch-processor não tem dependência do deduplicacao-service, fazemos a conversão manualmente.
      */
     private ResultadoDeduplicacao callDeduplicationService(ColetaRecord record) {
         try {
@@ -114,10 +117,13 @@ public class ColetaRecordProcessor implements ItemProcessor<ColetaRecord, Coleta
                     record.getIdColeta(),
                     url);
 
-            // Envia a coleta completa para o serviço
+            // Converter ColetaMetadata para DeduplicacaoRequest (DTO esperado pelo endpoint)
+            Object request = convertToDeduplicacaoRequest(record.getColeta());
+
+            // Envia o DTO correto para o serviço
             ResultadoDeduplicacao resultado = restTemplate.postForObject(
                     url,
-                    record.getColeta(),
+                    request,
                     ResultadoDeduplicacao.class
             );
 
@@ -131,5 +137,83 @@ public class ColetaRecordProcessor implements ItemProcessor<ColetaRecord, Coleta
                     e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Converte ColetaMetadata para DeduplicacaoRequest (estrutura esperada pelo controller)
+     *
+     * <p>Esta conversão manual é necessária porque batch-processor não depende de deduplicacao-service.
+     * Em produção, considere extrair os DTOs para um módulo compartilhado ou usar biblioteca de conversão.
+     *
+     * @param coleta Domain model do commons
+     * @return Map simulando DeduplicacaoRequest
+     */
+    private Object convertToDeduplicacaoRequest(bio.prodesp.deduplicacao.commons.model.domain.ColetaMetadata coleta) {
+        // Usa Map para evitar dependência circular entre módulos
+        java.util.Map<String, Object> request = new java.util.HashMap<>();
+        request.put("idColeta", coleta.getIdColeta());
+        request.put("cpf", coleta.getCpf());
+        request.put("dataNascimento", coleta.getDataNascimento());
+        request.put("sistemaOrigem", "IIRGD");
+
+        // Converter dados biométricos
+        if (coleta.getDadosBiometricos() != null && !coleta.getDadosBiometricos().isEmpty()) {
+            java.util.List<java.util.Map<String, Object>> dadosBiometricosDTO = new java.util.ArrayList<>();
+
+            for (bio.prodesp.deduplicacao.commons.model.domain.DadoBiometricoMetadata dado : coleta.getDadosBiometricos()) {
+                java.util.Map<String, Object> dadoDTO = new java.util.HashMap<>();
+                dadoDTO.put("tipo", dado.getTipo());
+
+                // Converter posicaoDedo (Integer) para posicao (String descritiva)
+                if (dado.getPosicaoDedo() != null) {
+                    dadoDTO.put("posicao", convertPosicaoDedoToString(dado.getPosicaoDedo()));
+                }
+
+                // Extrair primeiro template se existir
+                if (dado.getTemplates() != null && !dado.getTemplates().isEmpty()) {
+                    bio.prodesp.deduplicacao.commons.model.domain.TemplateMetadata templateMeta =
+                        dado.getTemplates().get(0);
+
+                    // Codifica byte array para Base64 string
+                    if (templateMeta.getDados() != null) {
+                        String templateBase64 = java.util.Base64.getEncoder()
+                            .encodeToString(templateMeta.getDados());
+                        dadoDTO.put("template", templateBase64);
+                    }
+
+                    dadoDTO.put("formato", templateMeta.getFormato());
+                }
+
+                dadoDTO.put("nfiq2Score", dado.getQualidadeNfiq());
+                dadosBiometricosDTO.add(dadoDTO);
+            }
+
+            request.put("dadosBiometricos", dadosBiometricosDTO);
+        }
+
+        return request;
+    }
+
+    /**
+     * Converte código de posição do dedo (Integer) para String descritiva
+     * Sincronizado com DeduplicacaoRequestMapper do deduplicacao-service
+     */
+    private String convertPosicaoDedoToString(Integer posicaoDedo) {
+        if (posicaoDedo == null) {
+            return null;
+        }
+        return switch (posicaoDedo) {
+            case 1 -> "POLEGAR_DIREITO";
+            case 2 -> "INDICADOR_DIREITO";
+            case 3 -> "MEDIO_DIREITO";
+            case 4 -> "ANELAR_DIREITO";
+            case 5 -> "MINIMO_DIREITO";
+            case 6 -> "POLEGAR_ESQUERDO";
+            case 7 -> "INDICADOR_ESQUERDO";
+            case 8 -> "MEDIO_ESQUERDO";
+            case 9 -> "ANELAR_ESQUERDO";
+            case 10 -> "MINIMO_ESQUERDO";
+            default -> "DESCONHECIDO";
+        };
     }
 }
