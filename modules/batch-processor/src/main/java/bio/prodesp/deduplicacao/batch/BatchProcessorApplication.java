@@ -1,4 +1,4 @@
-package br.gov.sp.prodesp.deduplicacao.batch;
+package bio.prodesp.deduplicacao.batch;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

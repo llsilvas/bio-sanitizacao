@@ -11,7 +11,7 @@ spring:
   datasource:
     url: jdbc:sqlserver://localhost:1433;databaseName=batch_metadata;encrypt=true;trustServerCertificate=true
     username: sa
-    password: YourStrong@Passw0rd
+    password: Sanitizador@dmin#123
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
     hikari:
       maximum-pool-size: 10

@@ -16,6 +16,8 @@ import java.util.Queue;
 /**
  * ItemReader customizado para ler coletas do OpenSearch usando scroll API
  * Retorna ColetaRecord que encapsula ColetaMetadata
+ *
+ * IMPORTANTE: Esta classe NÃO é um Spring Bean. Cada partição cria uma instância própria.
  */
 @Slf4j
 public class OpenSearchItemReader implements ItemReader<ColetaRecord> {
@@ -25,18 +27,14 @@ public class OpenSearchItemReader implements ItemReader<ColetaRecord> {
     private final int totalPartitions;
 
     private String scrollId;
-    private Queue<ColetaRecord> documentQueue;
+    private Queue<ColetaRecord> documentQueue = new LinkedList<>();
     private boolean exhausted = false;
     private long totalRead = 0;
 
-    public OpenSearchItemReader(
-            OpenSearchService openSearchService,
-            int partitionNumber,
-            int totalPartitions) {
+    public OpenSearchItemReader(OpenSearchService openSearchService, int partitionNumber, int totalPartitions) {
         this.openSearchService = openSearchService;
         this.partitionNumber = partitionNumber;
         this.totalPartitions = totalPartitions;
-        this.documentQueue = new LinkedList<>();
     }
 
     @Override
@@ -140,8 +138,14 @@ public class OpenSearchItemReader implements ItemReader<ColetaRecord> {
         if (scrollId != null) {
             log.info("Partition {}: cleaning up scroll. Total coletas read: {}",
                     partitionNumber, totalRead);
-            openSearchService.clearScroll(scrollId);
-            scrollId = null;
+            try {
+                openSearchService.clearScroll(scrollId);
+            } catch (Exception e) {
+                log.warn("Partition {}: failed to clear scroll ID {} - {}",
+                        partitionNumber, scrollId, e.getMessage());
+            } finally {
+                scrollId = null;
+            }
         }
     }
 }

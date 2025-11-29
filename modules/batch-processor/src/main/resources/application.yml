@@ -7,12 +7,19 @@ spring:
       enabled: false
     jdbc:
       initialize-schema: always
+      table-prefix: SANITIZADOR_
 
   datasource:
-    url: jdbc:sqlserver://${DB_HOST:localhost}:${DB_PORT:1433};databaseName=${DB_NAME:batch_metadata};encrypt=true;trustServerCertificate=true
-    username: ${DB_USER:sa}
-    password: ${DB_PASSWORD:YourStrong@Passw0rd}
+    url: jdbc:sqlserver://localhost:1433;databaseName=batch_metadata;encrypt=true;trustServerCertificate=true
+    username: sa
+    password: Sanitizador@dmin#123
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
   jpa:
     database-platform: org.hibernate.dialect.SQLServerDialect

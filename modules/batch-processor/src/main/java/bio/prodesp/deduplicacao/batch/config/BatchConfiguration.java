@@ -22,7 +22,10 @@ import bio.prodesp.deduplicacao.batch.listener.JobCompletionListener;
 import bio.prodesp.deduplicacao.batch.listener.StepExecutionListener;
 import bio.prodesp.deduplicacao.batch.partition.BiometricRecordPartitioner;
 import bio.prodesp.deduplicacao.batch.processor.ColetaRecordProcessor;
+import bio.prodesp.deduplicacao.batch.reader.OpenSearchItemReader;
 import bio.prodesp.deduplicacao.batch.service.DistributedLockService;
+import bio.prodesp.deduplicacao.batch.service.OpenSearchService;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 
 @Slf4j
 @Configuration
@@ -122,6 +125,25 @@ public class BatchConfiguration {
                 .retryLimit(3)
                 .retry(Exception.class)
                 .build();
+    }
+
+    /**
+     * ItemReader com escopo de step - cada partição cria sua própria instância
+     *
+     * @StepScope garante que um novo reader é criado para cada partição
+     * Os valores #{stepExecutionContext[...]} são injetados pelo partitioner
+     */
+    @Bean
+    @StepScope
+    public ItemReader<ColetaRecord> coletaRecordItemReader(
+            OpenSearchService openSearchService,
+            @Value("#{stepExecutionContext['partitionNumber']}") Integer partitionNumber,
+            @Value("#{stepExecutionContext['totalPartitions']}") Integer totalPartitions) {
+
+        log.info("Creating OpenSearchItemReader for partition {} of {}",
+                partitionNumber, totalPartitions);
+
+        return new OpenSearchItemReader(openSearchService, partitionNumber, totalPartitions);
     }
 
     /**
