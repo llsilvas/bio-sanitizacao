@@ -4,6 +4,8 @@ import bio.prodesp.deduplicacao.commons.exception.ABISViolacaoUnicidadeException
 import bio.prodesp.deduplicacao.commons.exception.CriterioEntradaException;
 import bio.prodesp.deduplicacao.commons.exception.OSIAException;
 import bio.prodesp.deduplicacao.commons.model.domain.ColetaMetadata;
+import bio.prodesp.deduplicacao.commons.model.domain.DadoBiometricoMetadata;
+import bio.prodesp.deduplicacao.commons.model.domain.TemplateMetadata;
 import bio.prodesp.deduplicacao.commons.model.dto.ResultadoDeduplicacao;
 import bio.prodesp.deduplicacao.commons.model.dto.osia.*;
 import bio.prodesp.deduplicacao.commons.model.enums.StatusValidacao;
@@ -15,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -27,7 +30,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class DeduplicacaoIIRGDService {
+public class DeduplicacaoService {
 
     private final OSIAClient osiaClient;
     // TODO: Injetar ColetaRepository quando implementado
@@ -167,9 +170,8 @@ public class DeduplicacaoIIRGDService {
         Encounter melhor = ordenados.get(0);
         Encounter segundoMelhor = ordenados.size() > 1 ? ordenados.get(1) : null;
 
-        // TODO: Implementar obtenção do NFIQ2 score da coleta atual
-        // O score pode estar em DadoBiometricoMetadata ou ser calculado
-        Integer nfiq2Coleta = 0;
+        // Obter o melhor NFIQ2 score da coleta atual
+        Integer nfiq2Coleta = obterMelhorNFIQ2(coleta);
 
         // Se a coleta atual é melhor que a melhor existente
         if (nfiq2Coleta > melhor.getMetadata().getNfiq2Score()) {
@@ -324,11 +326,174 @@ public class DeduplicacaoIIRGDService {
 
     /**
      * Converte ColetaMetadata para BiometricDataOSIA
+     *
+     * @param coleta Coleta com dados biométricos
+     * @return BiometricDataOSIA formatado para ABIS/OSIA
+     * @throws CriterioEntradaException se não houver dados biométricos
      */
     private BiometricDataOSIA converterParaBiometricDataOSIA(ColetaMetadata coleta) {
-        // TODO: Implementar conversão real quando os campos biométricos estiverem definidos
-        // Por enquanto retorna objeto vazio para compilar
-        return BiometricDataOSIA.builder().build();
+        if (coleta.getDadosBiometricos() == null || coleta.getDadosBiometricos().isEmpty()) {
+            throw new CriterioEntradaException("Nenhum dado biométrico fornecido");
+        }
+
+        List<BiometricDataOSIA.FingerprintOSIA> fingerprints = new ArrayList<>();
+        BiometricDataOSIA.FaceImageOSIA face = null;
+        List<BiometricDataOSIA.IrisImageOSIA> iris = new ArrayList<>();
+
+        for (DadoBiometricoMetadata dado : coleta.getDadosBiometricos()) {
+            String tipo = dado.getTipo() != null ? dado.getTipo().toUpperCase() : "";
+
+            switch (tipo) {
+                case "IMPRESSAO_DIGITAL", "FINGERPRINT" -> {
+                    BiometricDataOSIA.FingerprintOSIA fingerprint = converterParaFingerprint(dado);
+                    if (fingerprint != null) {
+                        fingerprints.add(fingerprint);
+                    }
+                }
+                case "FACE", "FACIAL" -> {
+                    face = converterParaFace(dado);
+                }
+                case "IRIS" -> {
+                    BiometricDataOSIA.IrisImageOSIA irisImage = converterParaIris(dado);
+                    if (irisImage != null) {
+                        iris.add(irisImage);
+                    }
+                }
+                default -> log.warn("Tipo biométrico desconhecido: {} - ignorando", tipo);
+            }
+        }
+
+        return BiometricDataOSIA.builder()
+                .fingerprints(fingerprints.isEmpty() ? null : fingerprints)
+                .face(face)
+                .iris(iris.isEmpty() ? null : iris)
+                .build();
+    }
+
+    /**
+     * Converte DadoBiometricoMetadata para FingerprintOSIA
+     */
+    private BiometricDataOSIA.FingerprintOSIA converterParaFingerprint(DadoBiometricoMetadata dado) {
+        if (dado.getTemplates() == null || dado.getTemplates().isEmpty()) {
+            log.warn("Dado biométrico sem templates - ignorando");
+            return null;
+        }
+
+        // Pega o primeiro template (pode haver múltiplos formatos)
+        TemplateMetadata template = dado.getTemplates().get(0);
+
+        // Converte byte[] para Base64
+        String templateBase64 = null;
+        if (template.getDados() != null) {
+            templateBase64 = java.util.Base64.getEncoder().encodeToString(template.getDados());
+        }
+
+        return BiometricDataOSIA.FingerprintOSIA.builder()
+                .position(converterPosicaoParaOSIA(dado.getPosicaoDedo()))
+                .template(templateBase64)
+                .format(template.getFormato())
+                .quality(dado.getQualidadeNfiq())
+                .build();
+    }
+
+    /**
+     * Converte DadoBiometricoMetadata para FaceImageOSIA
+     */
+    private BiometricDataOSIA.FaceImageOSIA converterParaFace(DadoBiometricoMetadata dado) {
+        if (dado.getTemplates() == null || dado.getTemplates().isEmpty()) {
+            log.warn("Dado facial sem templates - ignorando");
+            return null;
+        }
+
+        TemplateMetadata template = dado.getTemplates().get(0);
+
+        String imageBase64 = null;
+        if (template.getDados() != null) {
+            imageBase64 = java.util.Base64.getEncoder().encodeToString(template.getDados());
+        }
+
+        return BiometricDataOSIA.FaceImageOSIA.builder()
+                .image(imageBase64)
+                .format(template.getFormato())
+                .quality(dado.getQualidadeNfiq())
+                .build();
+    }
+
+    /**
+     * Converte DadoBiometricoMetadata para IrisImageOSIA
+     */
+    private BiometricDataOSIA.IrisImageOSIA converterParaIris(DadoBiometricoMetadata dado) {
+        if (dado.getTemplates() == null || dado.getTemplates().isEmpty()) {
+            log.warn("Dado de íris sem templates - ignorando");
+            return null;
+        }
+
+        TemplateMetadata template = dado.getTemplates().get(0);
+
+        String imageBase64 = null;
+        if (template.getDados() != null) {
+            imageBase64 = java.util.Base64.getEncoder().encodeToString(template.getDados());
+        }
+
+        // Determina posição da íris (LEFT/RIGHT) baseado no código
+        String position = "UNKNOWN";
+        if (dado.getPosicaoDedo() != null) {
+            // Convenção: códigos ímpares = direita, pares = esquerda (exemplo)
+            // Ajustar conforme tabela real
+            position = dado.getPosicaoDedo() % 2 == 0 ? "LEFT" : "RIGHT";
+        }
+
+        return BiometricDataOSIA.IrisImageOSIA.builder()
+                .position(position)
+                .image(imageBase64)
+                .format(template.getFormato())
+                .quality(dado.getQualidadeNfiq())
+                .build();
+    }
+
+    /**
+     * Converte código de posição do dedo para formato OSIA
+     *
+     * @param posicaoDedo Código numérico (1-10)
+     * @return String OSIA format (RIGHT_THUMB, LEFT_INDEX, etc)
+     */
+    private String converterPosicaoParaOSIA(Integer posicaoDedo) {
+        if (posicaoDedo == null) {
+            return "UNKNOWN";
+        }
+
+        return switch (posicaoDedo) {
+            case 1 -> "RIGHT_THUMB";
+            case 2 -> "RIGHT_INDEX";
+            case 3 -> "RIGHT_MIDDLE";
+            case 4 -> "RIGHT_RING";
+            case 5 -> "RIGHT_LITTLE";
+            case 6 -> "LEFT_THUMB";
+            case 7 -> "LEFT_INDEX";
+            case 8 -> "LEFT_MIDDLE";
+            case 9 -> "LEFT_RING";
+            case 10 -> "LEFT_LITTLE";
+            default -> "UNKNOWN";
+        };
+    }
+
+    /**
+     * Obtém o melhor (maior) score NFIQ2 dentre todos os dados biométricos da coleta
+     *
+     * @param coleta Coleta com dados biométricos
+     * @return Maior NFIQ2 score encontrado, ou 0 se nenhum score disponível
+     */
+    private Integer obterMelhorNFIQ2(ColetaMetadata coleta) {
+        if (coleta.getDadosBiometricos() == null || coleta.getDadosBiometricos().isEmpty()) {
+            log.warn("Nenhum dado biométrico para extrair NFIQ2 - retornando 0");
+            return 0;
+        }
+
+        return coleta.getDadosBiometricos().stream()
+                .map(DadoBiometricoMetadata::getQualidadeNfiq)
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0);
     }
 
     /**

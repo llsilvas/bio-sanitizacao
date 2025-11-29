@@ -1,30 +1,99 @@
 spring:
   application:
     name: deduplicacao-service
-  
+
+  # SQL Server - Banco de dados principal
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:5432/deduplicacao
-    username: ${DB_USER:postgres}
-    password: ${DB_PASSWORD:postgres}
+    url: jdbc:sqlserver://${DB_HOST:localhost}:${DB_PORT:1433};databaseName=${DB_NAME:deduplicacao};encrypt=false;trustServerCertificate=true
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:YourStrong@Passw0rd}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
     hikari:
-      maximum-pool-size: 50
+      maximum-pool-size: 30
       minimum-idle: 10
-  
+      connection-timeout: 60000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
   jpa:
     hibernate:
+      # validate: Apenas valida schema (NÃO cria/altera tabelas)
+      # IMPORTANTE: Schema deve ser criado manualmente ou via Flyway
       ddl-auto: validate
     show-sql: false
-  
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+  # Cache com Redis
   cache:
     type: redis
 
+# Redis - Cache e Distributed Locks
 redis:
   host: ${REDIS_HOST:localhost}
   port: ${REDIS_PORT:6379}
   password: ${REDIS_PASSWORD:}
 
+# OpenSearch - Configuração do cliente (opcional para consultas)
+opensearch:
+  host: ${OPENSEARCH_HOST:localhost}
+  port: ${OPENSEARCH_PORT:9200}
+  username: ${OPENSEARCH_USER:admin}
+  password: ${OPENSEARCH_PASSWORD:admin}
+  scheme: ${OPENSEARCH_SCHEME:https}
+  ssl:
+    verify: ${OPENSEARCH_SSL_VERIFY:false}
+
 server:
   port: 8080
+
+# Configuração do OSIA Client
+osia:
+  base-url: ${OSIA_BASE_URL:http://localhost:9090/osia/v1}
+  connect-timeout: ${OSIA_CONNECT_TIMEOUT:10}
+  read-timeout: ${OSIA_READ_TIMEOUT:30}
+  write-timeout: ${OSIA_WRITE_TIMEOUT:30}
+
+# Resilience4j - Circuit Breaker e Retry
+resilience4j:
+  circuitbreaker:
+    instances:
+      osiaClient:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 30s
+        failureRateThreshold: 50
+        slowCallRateThreshold: 100
+        slowCallDurationThreshold: 10s
+
+  retry:
+    instances:
+      osiaClient:
+        maxAttempts: 3
+        waitDuration: 1s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+
+# SpringDoc OpenAPI / Swagger
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+  show-actuator: true
 
 management:
   endpoints:
@@ -39,4 +108,4 @@ management:
 logging:
   level:
     root: INFO
-    br.gov.sp.prodesp: DEBUG
+    bio.prodesp: DEBUG
