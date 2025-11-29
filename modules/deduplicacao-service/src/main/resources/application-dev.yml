@@ -1,0 +1,71 @@
+spring:
+  application:
+    name: deduplicacao-service
+
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST}:${DB_PORT:1433};databaseName=${DB_NAME:deduplicacao};encrypt=true;trustServerCertificate=false
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+
+  jpa:
+    database-platform: org.hibernate.dialect.SQLServerDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000
+      cache-null-values: false
+
+redis:
+  host: ${REDIS_HOST}
+  port: ${REDIS_PORT:6379}
+  password: ${REDIS_PASSWORD:}
+  timeout: 3000
+  lettuce:
+    pool:
+      max-active: 30
+      max-idle: 15
+      min-idle: 5
+      max-wait: 2000
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      environment: dev
+
+logging:
+  level:
+    root: INFO
+    br.gov.sp.prodesp: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

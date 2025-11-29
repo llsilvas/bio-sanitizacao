@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: batch-processor
+
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: always
+
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST:localhost}:${DB_PORT:1433};databaseName=${DB_NAME:batch_metadata};encrypt=true;trustServerCertificate=true
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:YourStrong@Passw0rd}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+  jpa:
+    database-platform: org.hibernate.dialect.SQLServerDialect
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+redis:
+  host: ${REDIS_HOST:localhost}
+  port: ${REDIS_PORT:6379}
+
+opensearch:
+  host: ${OPENSEARCH_HOST:localhost}
+  port: ${OPENSEARCH_PORT:9200}
+  username: ${OPENSEARCH_USER:admin}
+  password: ${OPENSEARCH_PASSWORD:admin}
+  scheme: ${OPENSEARCH_SCHEME:https}
+  ssl:
+    verify: ${OPENSEARCH_SSL_VERIFY:false}
+  index: ${OPENSEARCH_INDEX:biometric-data}
+  scroll:
+    timeout: ${OPENSEARCH_SCROLL_TIMEOUT:5m}
+    size: ${OPENSEARCH_SCROLL_SIZE:1000}
+
+deduplicacao:
+  service:
+    url: ${DEDUPLICACAO_SERVICE_URL:http://localhost:8080}
+
+batch:
+  partition:
+    grid-size: ${BATCH_PARTITION_GRID_SIZE:10}
+  chunk-size: 100
+
+server:
+  port: 8081
+
+logging:
+  level:
+    root: INFO
+    br.gov.sp.prodesp: DEBUG

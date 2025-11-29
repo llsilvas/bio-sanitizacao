@@ -1,0 +1,123 @@
+spring:
+  application:
+    name: batch-processor
+
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST}:${DB_PORT:1433};databaseName=${DB_NAME:batch_metadata};encrypt=true;trustServerCertificate=false
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 40
+      minimum-idle: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      connection-test-query: SELECT 1
+
+  jpa:
+    database-platform: org.hibernate.dialect.SQLServerDialect
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        show_sql: false
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
+
+redis:
+  host: ${REDIS_HOST}
+  port: ${REDIS_PORT:6379}
+  password: ${REDIS_PASSWORD:}
+  timeout: 5000
+  lettuce:
+    pool:
+      max-active: 50
+      max-idle: 25
+      min-idle: 10
+      max-wait: 3000
+    shutdown-timeout: 10000
+
+opensearch:
+  host: ${OPENSEARCH_HOST}
+  port: ${OPENSEARCH_PORT:9200}
+  username: ${OPENSEARCH_USER}
+  password: ${OPENSEARCH_PASSWORD}
+  scheme: ${OPENSEARCH_SCHEME:https}
+  ssl:
+    verify: ${OPENSEARCH_SSL_VERIFY:true}
+  index: ${OPENSEARCH_INDEX:biometric-data}
+  scroll:
+    timeout: ${OPENSEARCH_SCROLL_TIMEOUT:5m}
+    size: ${OPENSEARCH_SCROLL_SIZE:1000}
+  connection:
+    timeout: 10000
+    socketTimeout: 180000
+  pool:
+    maxTotal: 50
+    maxPerRoute: 25
+
+deduplicacao:
+  service:
+    url: ${DEDUPLICACAO_SERVICE_URL}
+    connection:
+      timeout: 10000
+      readTimeout: 30000
+
+batch:
+  partition:
+    grid-size: ${BATCH_PARTITION_GRID_SIZE:20}
+  chunk-size: 200
+
+server:
+  port: 8081
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+
+spring.lifecycle:
+  timeout-per-shutdown-phase: 30s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      environment: staging
+
+logging:
+  level:
+    root: INFO
+    br.gov.sp.prodesp: INFO
+    org.springframework.batch: INFO
+    org.opensearch: WARN
+    org.redisson: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: /var/log/batch-processor/application.log
+    max-size: 100MB
+    max-history: 7

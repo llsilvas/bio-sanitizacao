@@ -1,0 +1,17 @@
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/BatchProcessorApplication.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/config/BatchConfiguration.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/config/OpenSearchConfig.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/config/RedissonConfig.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/listener/JobCompletionListener.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/listener/StepExecutionListener.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/partition/BiometricRecordPartitioner.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/processor/BiometricDocumentProcessor.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/processor/BiometricRecordProcessor.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/reader/BiometricDocumentReaderFactory.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/reader/BiometricRecordReader.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/reader/OpenSearchItemReader.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/service/DistributedLockService.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/service/OpenSearchService.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/writer/BiometricDocumentWriterFactory.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/writer/BiometricRecordWriter.java
+/home/lsilva/Dev/workspace-biometria/bio-sanitizacao/modules/batch-processor/src/main/java/bio/prodesp/deduplicacao/batch/writer/OpenSearchItemWriter.java

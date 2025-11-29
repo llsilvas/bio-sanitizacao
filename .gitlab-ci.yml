@@ -1,0 +1,471 @@
+# GitLab CI/CD Pipeline para bio-sanitizacao
+# Java 21 + Spring Boot + Docker + Kubernetes (EKS)
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  
+  # Imagens base
+  MAVEN_IMAGE: "maven:3.9-eclipse-temurin-21"
+  DOCKER_IMAGE: "docker:24-dind"
+  KUBECTL_IMAGE: "bitnami/kubectl:1.28"
+  
+  # Configurações AWS
+  AWS_DEFAULT_REGION: "us-east-1"
+  ECR_REGISTRY: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+  
+  # Imagens Docker
+  DEDUPLICACAO_SERVICE_IMAGE: "${ECR_REGISTRY}/deduplicacao-service"
+  BATCH_PROCESSOR_IMAGE: "${ECR_REGISTRY}/batch-processor"
+
+# Cache para acelerar builds
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .m2/repository
+    - modules/*/target
+
+# Stages do pipeline
+stages:
+  - build
+  - test
+  - sonar
+  - package
+  - docker-build
+  - deploy-staging
+  - integration-test
+  - deploy-production
+
+# Apenas em branches específicas
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_TAG'
+
+################################################################################
+# STAGE: BUILD
+################################################################################
+
+build:commons:
+  stage: build
+  image: ${MAVEN_IMAGE}
+  script:
+    - echo "Building deduplicacao-commons..."
+    - cd modules/deduplicacao-commons
+    - mvn ${MAVEN_CLI_OPTS} clean compile
+  artifacts:
+    paths:
+      - modules/deduplicacao-commons/target
+    expire_in: 1 hour
+  only:
+    - merge_requests
+    - main
+    - develop
+  tags:
+    - docker
+
+build:service:
+  stage: build
+  image: ${MAVEN_IMAGE}
+  needs: ["build:commons"]
+  script:
+    - echo "Building deduplicacao-service..."
+    - cd modules/deduplicacao-service
+    - mvn ${MAVEN_CLI_OPTS} clean compile
+  artifacts:
+    paths:
+      - modules/deduplicacao-service/target
+    expire_in: 1 hour
+  only:
+    - merge_requests
+    - main
+    - develop
+  tags:
+    - docker
+
+build:batch:
+  stage: build
+  image: ${MAVEN_IMAGE}
+  needs: ["build:commons"]
+  script:
+    - echo "Building batch-processor..."
+    - cd modules/batch-processor
+    - mvn ${MAVEN_CLI_OPTS} clean compile
+  artifacts:
+    paths:
+      - modules/batch-processor/target
+    expire_in: 1 hour
+  only:
+    - merge_requests
+    - main
+    - develop
+  tags:
+    - docker
+
+################################################################################
+# STAGE: TEST
+################################################################################
+
+test:unit:
+  stage: test
+  image: ${MAVEN_IMAGE}
+  needs: 
+    - build:commons
+    - build:service
+    - build:batch
+  script:
+    - echo "Running unit tests..."
+    - mvn ${MAVEN_CLI_OPTS} test
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - modules/*/target/surefire-reports/TEST-*.xml
+    paths:
+      - modules/*/target/surefire-reports
+      - modules/*/target/site/jacoco
+    expire_in: 1 week
+  only:
+    - merge_requests
+    - main
+    - develop
+  tags:
+    - docker
+
+test:integration:
+  stage: test
+  image: ${MAVEN_IMAGE}
+  needs:
+    - build:commons
+    - build:service
+    - build:batch
+  services:
+    - postgres:14
+    - redis:7-alpine
+  variables:
+    POSTGRES_DB: "deduplicacao_test"
+    POSTGRES_USER: "test"
+    POSTGRES_PASSWORD: "test"
+    DB_HOST: "postgres"
+    REDIS_HOST: "redis"
+  script:
+    - echo "Running integration tests..."
+    - mvn ${MAVEN_CLI_OPTS} verify -DskipUnitTests
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - modules/*/target/failsafe-reports/TEST-*.xml
+    expire_in: 1 week
+  only:
+    - merge_requests
+    - main
+    - develop
+  tags:
+    - docker
+
+################################################################################
+# STAGE: SONAR (Code Quality)
+################################################################################
+
+sonarqube:check:
+  stage: sonar
+  image: ${MAVEN_IMAGE}
+  needs:
+    - test:unit
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - mvn ${MAVEN_CLI_OPTS} sonar:sonar
+      -Dsonar.projectKey=bio-sanitizacao
+      -Dsonar.host.url=${SONAR_HOST_URL}
+      -Dsonar.login=${SONAR_TOKEN}
+      -Dsonar.qualitygate.wait=true
+  allow_failure: true
+  only:
+    - merge_requests
+    - main
+    - develop
+  tags:
+    - docker
+
+################################################################################
+# STAGE: PACKAGE
+################################################################################
+
+package:service:
+  stage: package
+  image: ${MAVEN_IMAGE}
+  needs:
+    - test:unit
+    - test:integration
+  script:
+    - echo "Packaging deduplicacao-service..."
+    - cd modules/deduplicacao-service
+    - mvn ${MAVEN_CLI_OPTS} package -DskipTests
+  artifacts:
+    paths:
+      - modules/deduplicacao-service/target/*.jar
+    expire_in: 1 week
+  only:
+    - main
+    - develop
+    - tags
+  tags:
+    - docker
+
+package:batch:
+  stage: package
+  image: ${MAVEN_IMAGE}
+  needs:
+    - test:unit
+    - test:integration
+  script:
+    - echo "Packaging batch-processor..."
+    - cd modules/batch-processor
+    - mvn ${MAVEN_CLI_OPTS} package -DskipTests
+  artifacts:
+    paths:
+      - modules/batch-processor/target/*.jar
+    expire_in: 1 week
+  only:
+    - main
+    - develop
+    - tags
+  tags:
+    - docker
+
+################################################################################
+# STAGE: DOCKER BUILD
+################################################################################
+
+.docker_build_template: &docker_build_template
+  image: ${DOCKER_IMAGE}
+  services:
+    - docker:24-dind
+  before_script:
+    - echo "Logging in to ECR..."
+    - apk add --no-cache aws-cli
+    - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+  tags:
+    - docker
+
+docker:build:service:
+  <<: *docker_build_template
+  stage: docker-build
+  needs:
+    - package:service
+  script:
+    - echo "Building Docker image for deduplicacao-service..."
+    - cd modules/deduplicacao-service
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        TAG="latest"
+      elif [ -n "$CI_COMMIT_TAG" ]; then
+        TAG="$CI_COMMIT_TAG"
+      else
+        TAG="$CI_COMMIT_SHORT_SHA"
+      fi
+    - docker build -t ${DEDUPLICACAO_SERVICE_IMAGE}:${TAG} .
+    - docker push ${DEDUPLICACAO_SERVICE_IMAGE}:${TAG}
+    - echo "Image pushed: ${DEDUPLICACAO_SERVICE_IMAGE}:${TAG}"
+  only:
+    - main
+    - develop
+    - tags
+
+docker:build:batch:
+  <<: *docker_build_template
+  stage: docker-build
+  needs:
+    - package:batch
+  script:
+    - echo "Building Docker image for batch-processor..."
+    - cd modules/batch-processor
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        TAG="latest"
+      elif [ -n "$CI_COMMIT_TAG" ]; then
+        TAG="$CI_COMMIT_TAG"
+      else
+        TAG="$CI_COMMIT_SHORT_SHA"
+      fi
+    - docker build -t ${BATCH_PROCESSOR_IMAGE}:${TAG} .
+    - docker push ${BATCH_PROCESSOR_IMAGE}:${TAG}
+    - echo "Image pushed: ${BATCH_PROCESSOR_IMAGE}:${TAG}"
+  only:
+    - main
+    - develop
+    - tags
+
+################################################################################
+# STAGE: DEPLOY STAGING
+################################################################################
+
+.deploy_template: &deploy_template
+  image: ${KUBECTL_IMAGE}
+  before_script:
+    - echo "Configuring kubectl..."
+    - aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${EKS_CLUSTER_NAME}
+    - kubectl version --client
+
+deploy:staging:service:
+  <<: *deploy_template
+  stage: deploy-staging
+  needs:
+    - docker:build:service
+  script:
+    - echo "Deploying deduplicacao-service to STAGING..."
+    - |
+      TAG="${CI_COMMIT_SHORT_SHA}"
+      kubectl set image deployment/deduplicacao-service \
+        deduplicacao-service=${DEDUPLICACAO_SERVICE_IMAGE}:${TAG} \
+        -n biometric-staging
+    - kubectl rollout status deployment/deduplicacao-service -n biometric-staging --timeout=5m
+  environment:
+    name: staging
+    url: https://deduplicacao-staging.prodesp.sp.gov.br
+  only:
+    - develop
+  tags:
+    - kubernetes
+
+deploy:staging:batch:
+  <<: *deploy_template
+  stage: deploy-staging
+  needs:
+    - docker:build:batch
+  script:
+    - echo "Deploying batch-processor to STAGING..."
+    - |
+      TAG="${CI_COMMIT_SHORT_SHA}"
+      kubectl set image deployment/batch-processor \
+        batch-processor=${BATCH_PROCESSOR_IMAGE}:${TAG} \
+        -n biometric-staging
+    - kubectl rollout status deployment/batch-processor -n biometric-staging --timeout=5m
+  environment:
+    name: staging
+  only:
+    - develop
+  tags:
+    - kubernetes
+
+################################################################################
+# STAGE: INTEGRATION TEST (após deploy staging)
+################################################################################
+
+integration:test:staging:
+  stage: integration-test
+  image: curlimages/curl:latest
+  needs:
+    - deploy:staging:service
+    - deploy:staging:batch
+  script:
+    - echo "Running smoke tests in STAGING..."
+    - |
+      # Health check deduplicacao-service
+      response=$(curl -s -o /dev/null -w "%{http_code}" https://deduplicacao-staging.prodesp.sp.gov.br/actuator/health)
+      if [ "$response" -ne 200 ]; then
+        echo "Health check failed for deduplicacao-service"
+        exit 1
+      fi
+      echo "✅ Deduplicacao service is healthy"
+    - sleep 5
+    - echo "✅ Smoke tests passed"
+  only:
+    - develop
+  tags:
+    - docker
+
+################################################################################
+# STAGE: DEPLOY PRODUCTION
+################################################################################
+
+deploy:production:service:
+  <<: *deploy_template
+  stage: deploy-production
+  needs:
+    - docker:build:service
+    - integration:test:staging
+  script:
+    - echo "Deploying deduplicacao-service to PRODUCTION..."
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG="$CI_COMMIT_TAG"
+      else
+        TAG="latest"
+      fi
+    - |
+      kubectl set image deployment/deduplicacao-service \
+        deduplicacao-service=${DEDUPLICACAO_SERVICE_IMAGE}:${TAG} \
+        -n biometric-production
+    - kubectl rollout status deployment/deduplicacao-service -n biometric-production --timeout=10m
+  environment:
+    name: production
+    url: https://deduplicacao.prodesp.sp.gov.br
+  when: manual
+  only:
+    - main
+    - tags
+  tags:
+    - kubernetes
+
+deploy:production:batch:
+  <<: *deploy_template
+  stage: deploy-production
+  needs:
+    - docker:build:batch
+    - integration:test:staging
+  script:
+    - echo "Deploying batch-processor to PRODUCTION..."
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAG="$CI_COMMIT_TAG"
+      else
+        TAG="latest"
+      fi
+    - |
+      kubectl set image deployment/batch-processor \
+        batch-processor=${BATCH_PROCESSOR_IMAGE}:${TAG} \
+        -n biometric-production
+    - kubectl rollout status deployment/batch-processor -n biometric-production --timeout=10m
+  environment:
+    name: production
+  when: manual
+  only:
+    - main
+    - tags
+  tags:
+    - kubernetes
+
+################################################################################
+# ROLLBACK (manual)
+################################################################################
+
+rollback:production:
+  <<: *deploy_template
+  stage: deploy-production
+  script:
+    - echo "Rolling back PRODUCTION deployment..."
+    - kubectl rollout undo deployment/deduplicacao-service -n biometric-production
+    - kubectl rollout undo deployment/batch-processor -n biometric-production
+    - kubectl rollout status deployment/deduplicacao-service -n biometric-production
+    - kubectl rollout status deployment/batch-processor -n biometric-production
+  environment:
+    name: production
+  when: manual
+  only:
+    - main
+    - tags
+  tags:
+    - kubernetes

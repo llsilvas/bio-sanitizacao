@@ -1,0 +1,93 @@
+spring:
+  application:
+    name: deduplicacao-service
+
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST}:${DB_PORT:1433};databaseName=${DB_NAME:deduplicacao};encrypt=true;trustServerCertificate=false
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      connection-test-query: SELECT 1
+
+  jpa:
+    database-platform: org.hibernate.dialect.SQLServerDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: 50
+          fetch_size: 50
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 7200000
+      cache-null-values: false
+
+redis:
+  host: ${REDIS_HOST}
+  port: ${REDIS_PORT:6379}
+  password: ${REDIS_PASSWORD:}
+  timeout: 5000
+  lettuce:
+    pool:
+      max-active: 50
+      max-idle: 25
+      min-idle: 10
+      max-wait: 3000
+    shutdown-timeout: 10000
+
+server:
+  port: 8080
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 20
+    accept-count: 100
+    max-connections: 10000
+
+spring.lifecycle:
+  timeout-per-shutdown-phase: 30s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      environment: staging
+
+logging:
+  level:
+    root: INFO
+    br.gov.sp.prodesp: INFO
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: /var/log/deduplicacao-service/application.log
+    max-size: 100MB
+    max-history: 7

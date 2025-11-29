@@ -1,0 +1,96 @@
+spring:
+  application:
+    name: batch-processor
+
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: always
+
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=batch_metadata;encrypt=true;trustServerCertificate=true
+    username: sa
+    password: YourStrong@Passw0rd
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    database-platform: org.hibernate.dialect.SQLServerDialect
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        show_sql: false
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+redis:
+  host: localhost
+  port: 6379
+  timeout: 3000
+  lettuce:
+    pool:
+      max-active: 20
+      max-idle: 10
+      min-idle: 5
+      max-wait: 2000
+
+opensearch:
+  host: localhost
+  port: 9200
+  username: admin
+  password: admin
+  scheme: http
+  ssl:
+    verify: false
+  index: biometric-data
+  scroll:
+    timeout: 5m
+    size: 100
+  connection:
+    timeout: 5000
+    socketTimeout: 60000
+  pool:
+    maxTotal: 20
+    maxPerRoute: 10
+
+deduplicacao:
+  service:
+    url: http://localhost:8080
+
+batch:
+  partition:
+    grid-size: 5
+  chunk-size: 50
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    br.gov.sp.prodesp: DEBUG
+    org.springframework.batch: DEBUG
+    org.opensearch: WARN
+    org.redisson: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

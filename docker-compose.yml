@@ -1,0 +1,179 @@
+version: '3.8'
+
+services:
+  # SQL Server para metadados do batch e dados de deduplicação
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: bio-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Passw0rd
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+      - ./docker/init-db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - bio-network
+
+  # Redis para cache e distributed locks
+  redis:
+    image: redis:7-alpine
+    container_name: bio-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - bio-network
+
+  # OpenSearch para armazenamento de dados biométricos
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: bio-opensearch
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - DISABLE_SECURITY_PLUGIN=false
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@123
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: curl -k -u admin:Admin@123 https://localhost:9200/_cluster/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - bio-network
+
+  # OpenSearch Dashboards (opcional, para visualização)
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.0
+    container_name: bio-opensearch-dashboards
+    ports:
+      - "5601:5601"
+    environment:
+      - OPENSEARCH_HOSTS=["https://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=false
+    depends_on:
+      - opensearch
+    networks:
+      - bio-network
+
+  # Deduplicação Service
+  deduplicacao-service:
+    build:
+      context: .
+      dockerfile: modules/deduplicacao-service/Dockerfile
+    container_name: bio-deduplicacao-service
+    environment:
+      - SPRING_PROFILES_ACTIVE=local
+      - DB_HOST=sqlserver
+      - DB_PORT=1433
+      - DB_NAME=deduplicacao
+      - DB_USER=sa
+      - DB_PASSWORD=YourStrong@Passw0rd
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JAVA_OPTS=-Xms512m -Xmx2g -XX:+UseZGC -XX:MaxRAMPercentage=75.0
+    ports:
+      - "8080:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - bio-network
+    restart: unless-stopped
+
+  # Batch Processor
+  batch-processor:
+    build:
+      context: .
+      dockerfile: modules/batch-processor/Dockerfile
+    container_name: bio-batch-processor
+    environment:
+      - SPRING_PROFILES_ACTIVE=local
+      - DB_HOST=sqlserver
+      - DB_PORT=1433
+      - DB_NAME=batch_metadata
+      - DB_USER=sa
+      - DB_PASSWORD=YourStrong@Passw0rd
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OPENSEARCH_HOST=opensearch
+      - OPENSEARCH_PORT=9200
+      - OPENSEARCH_USER=admin
+      - OPENSEARCH_PASSWORD=Admin@123
+      - OPENSEARCH_SCHEME=https
+      - OPENSEARCH_SSL_VERIFY=false
+      - OPENSEARCH_INDEX=biometric-data
+      - DEDUPLICACAO_SERVICE_URL=http://deduplicacao-service:8080
+      - BATCH_PARTITION_GRID_SIZE=5
+      - JAVA_OPTS=-Xms512m -Xmx2g -XX:+UseZGC -XX:MaxRAMPercentage=75.0
+    ports:
+      - "8081:8081"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      deduplicacao-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    networks:
+      - bio-network
+    restart: unless-stopped
+
+volumes:
+  sqlserver-data:
+    driver: local
+  redis-data:
+    driver: local
+  opensearch-data:
+    driver: local
+
+networks:
+  bio-network:
+    driver: bridge

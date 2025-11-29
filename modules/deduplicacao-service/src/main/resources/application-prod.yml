@@ -1,0 +1,194 @@
+spring:
+  application:
+    name: deduplicacao-service
+
+  datasource:
+    url: jdbc:sqlserver://${DB_HOST}:${DB_PORT:1433};databaseName=${DB_NAME:deduplicacao};encrypt=true;trustServerCertificate=false
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 100
+      minimum-idle: 50
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      connection-test-query: SELECT 1
+      validation-timeout: 5000
+
+  jpa:
+    database-platform: org.hibernate.dialect.SQLServerDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: 100
+          fetch_size: 100
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
+        cache:
+          use_second_level_cache: true
+          use_query_cache: true
+          region:
+            factory_class: org.redisson.hibernate.RedissonRegionFactory
+        redisson:
+          fallback: true
+          config: classpath:redisson.yaml
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 7200000
+      cache-null-values: false
+    caffeine:
+      spec: maximumSize=10000,expireAfterWrite=300s
+
+redis:
+  host: ${REDIS_HOST}
+  port: ${REDIS_PORT:6379}
+  password: ${REDIS_PASSWORD:}
+  timeout: 5000
+  lettuce:
+    pool:
+      max-active: 200
+      max-idle: 100
+      min-idle: 50
+      max-wait: 3000
+    shutdown-timeout: 10000
+  cluster:
+    enabled: ${REDIS_CLUSTER_ENABLED:false}
+    nodes: ${REDIS_CLUSTER_NODES:}
+
+server:
+  port: 8080
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 400
+      min-spare: 50
+    accept-count: 200
+    max-connections: 20000
+    connection-timeout: 20000
+    max-http-form-post-size: 10MB
+
+spring.lifecycle:
+  timeout-per-shutdown-phase: 60s
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      detranService:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 5s
+        permitted-number-of-calls-in-half-open-state: 10
+        sliding-window-size: 100
+        minimum-number-of-calls: 20
+        wait-duration-in-open-state: 30s
+      mesService:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 5s
+        permitted-number-of-calls-in-half-open-state: 10
+        sliding-window-size: 100
+        minimum-number-of-calls: 20
+        wait-duration-in-open-state: 30s
+      abisService:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        slow-call-duration-threshold: 10s
+        permitted-number-of-calls-in-half-open-state: 10
+        sliding-window-size: 100
+        minimum-number-of-calls: 20
+        wait-duration-in-open-state: 60s
+
+  retry:
+    instances:
+      detranService:
+        max-attempts: 3
+        wait-duration: 1000
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+      mesService:
+        max-attempts: 3
+        wait-duration: 1000
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+      abisService:
+        max-attempts: 5
+        wait-duration: 2000
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+
+  bulkhead:
+    instances:
+      detranService:
+        max-concurrent-calls: 100
+        max-wait-duration: 5s
+      mesService:
+        max-concurrent-calls: 100
+        max-wait-duration: 5s
+      abisService:
+        max-concurrent-calls: 50
+        max-wait-duration: 10s
+
+  ratelimiter:
+    instances:
+      detranService:
+        limit-for-period: 1000
+        limit-refresh-period: 1s
+        timeout-duration: 0
+      mesService:
+        limit-for-period: 1000
+        limit-refresh-period: 1s
+        timeout-duration: 0
+      abisService:
+        limit-for-period: 500
+        limit-refresh-period: 1s
+        timeout-duration: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      environment: production
+      cluster: ${CLUSTER_NAME:eks-prod}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+logging:
+  level:
+    root: WARN
+    br.gov.sp.prodesp: INFO
+    org.hibernate.SQL: ERROR
+    org.springframework.web: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: /var/log/deduplicacao-service/application.log
+    max-size: 500MB
+    max-history: 30
