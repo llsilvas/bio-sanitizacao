@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/osia/v1/identify"
+  },
+  "response": {
+    "status": 200,
+    "jsonBody": {
+      "result": "success",
+      "personId": "789012",
+      "score": 95.3
+    },
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  }
+}

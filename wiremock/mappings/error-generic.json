@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "ANY",
+    "urlPattern": "/v1/.*",
+    "headers": { "X-Force-Error": { "equalTo": "true" } }
+  },
+  "response": {
+    "status": 500,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{ \"error\": { \"code\": \"ERR-500\", \"message\": \"Erro técnico simulado\", \"cause\": \"Exceção interna\" } }"
+  }
+}

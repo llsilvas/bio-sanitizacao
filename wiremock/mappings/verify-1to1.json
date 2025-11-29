@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/v1/verify/.+/.+",
+    "headers": { "Content-Type": { "contains": "application/json" } }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{ \"status\": \"VERIFICADO\", \"score\": 98.7, \"transactionId\": \"{{randomValue length=12 type='ALPHANUMERIC'}}\" }",
+    "transformers": ["response-template"]
+  }
+}

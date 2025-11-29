@@ -1,21 +1,21 @@
-version: '3.8'
 
 services:
   # SQL Server para metadados do batch e dados de deduplicação
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2019-latest
     container_name: bio-sqlserver
+    user: "0:0"
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=YourStrong@Passw0rd
+      - SA_PASSWORD=Sanitizador@dmin#123
       - MSSQL_PID=Developer
     ports:
       - "1433:1433"
     volumes:
-      - sqlserver-data:/var/opt/mssql
-      - ./docker/init-db:/docker-entrypoint-initdb.d
+      - sqlserver-data:/var/opt/mssql/data
+#      - ./sql-scripts:/docker-entrypoint-initdb.d
     healthcheck:
-      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong@Passw0rd" -C -Q "SELECT 1" || exit 1
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Sanitizador@dmin#123' -C -Q "SELECT 1" || exit 1
       interval: 10s
       timeout: 5s
       retries: 10
@@ -165,6 +165,16 @@ services:
     networks:
       - bio-network
     restart: unless-stopped
+  wiremock:
+      image: wiremock/wiremock:2.35.0
+      container_name: bio-wiremock
+      ports:
+        - "9090:8080"
+      volumes:
+        - ./wiremock:/home/wiremock
+      command: ["--verbose", "--root-dir", "/home/wiremock"]
+      networks:
+        - bio-network
 
 volumes:
   sqlserver-data:

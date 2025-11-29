@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/osia/abis/v1/search",
+    "headers": {
+      "Content-Type": { "contains": "application/json" }
+    },
+    "bodyPatterns": [
+      { "matchesJsonPath": "$.searchCriteria" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{ \"requestId\": \"{{randomValue length=16 type='ALPHANUMERIC'}}\", \"status\": \"ACCEPTED\" }",
+    "transformers": ["response-template"]
+  }
+}

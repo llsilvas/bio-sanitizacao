@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "PUT",
+    "urlPathPattern": "/v1/persons/.+/encounters/.+",
+    "headers": { "Content-Type": { "contains": "application/json" } }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{ \"status\": \"ATUALIZADO\", \"encounterId\": \"{{request.path.[4]}}\" }",
+    "transformers": ["response-template"]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/v1/persons/.+/encounters",
+    "headers": { "Content-Type": { "contains": "application/json" } }
+  },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{ \"encounterId\": \"{{randomValue length=10 type='ALPHANUMERIC'}}\", \"status\": \"CRIADO\" }",
+    "transformers": ["response-template"]
+  }
+}

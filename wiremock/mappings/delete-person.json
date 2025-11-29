@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "DELETE",
+    "urlPathPattern": "/v1/persons/.+"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{ \"status\": \"EXCLUIDO\", \"personId\": \"{{request.path.[2]}}\" }",
+    "transformers": ["response-template"]
+  }
+}

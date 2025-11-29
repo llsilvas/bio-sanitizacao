@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/v1/identify/.+",
+    "headers": { "Content-Type": { "contains": "application/json" } }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{ \"status\": \"IDENTIFICADO\", \"personId\": \"{{randomValue length=8 type='NUMERIC'}}\", \"score\": 93.5 }",
+    "transformers": ["response-template"]
+  }
+}
