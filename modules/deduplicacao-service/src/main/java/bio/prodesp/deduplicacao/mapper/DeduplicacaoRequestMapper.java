@@ -1,8 +1,8 @@
-package bio.prodesp.deduplicacao.service.mapper;
+package bio.prodesp.deduplicacao.mapper;
 
 import bio.prodesp.deduplicacao.commons.model.domain.ColetaMetadata;
 import bio.prodesp.deduplicacao.commons.model.domain.DadoBiometricoMetadata;
-import bio.prodesp.deduplicacao.service.controller.dto.DeduplicacaoRequest;
+import bio.prodesp.deduplicacao.controller.dto.DeduplicacaoRequest;
 import org.mapstruct.*;
 
 import java.util.Base64;

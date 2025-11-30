@@ -1,8 +1,8 @@
-package bio.prodesp.deduplicacao.service.mapper;
+package bio.prodesp.deduplicacao.mapper;
 
 import bio.prodesp.deduplicacao.commons.model.dto.ResultadoDeduplicacao;
-import bio.prodesp.deduplicacao.service.controller.dto.DeduplicacaoRequest;
-import bio.prodesp.deduplicacao.service.controller.dto.DeduplicacaoResponse;
+import bio.prodesp.deduplicacao.controller.dto.DeduplicacaoRequest;
+import bio.prodesp.deduplicacao.controller.dto.DeduplicacaoResponse;
 import org.mapstruct.*;
 
 /**

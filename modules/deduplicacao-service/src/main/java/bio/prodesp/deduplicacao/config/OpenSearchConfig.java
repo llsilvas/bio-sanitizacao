@@ -1,4 +1,4 @@
-package bio.prodesp.deduplicacao.service.config;
+package bio.prodesp.deduplicacao.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.auth.AuthScope;

@@ -1,4 +1,4 @@
-package bio.prodesp.deduplicacao.service.controller.dto;
+package bio.prodesp.deduplicacao.controller.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.NotBlank;

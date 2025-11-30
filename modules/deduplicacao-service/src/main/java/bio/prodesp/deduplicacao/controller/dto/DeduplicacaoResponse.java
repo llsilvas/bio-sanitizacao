@@ -1,4 +1,4 @@
-package bio.prodesp.deduplicacao.service.controller.dto;
+package bio.prodesp.deduplicacao.controller.dto;
 
 import bio.prodesp.deduplicacao.commons.model.enums.StatusValidacao;
 import com.fasterxml.jackson.annotation.JsonFormat;

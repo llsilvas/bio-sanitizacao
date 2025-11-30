@@ -124,7 +124,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>bio.prodesp.deduplicacao.service.DeduplicacaoServiceApplication</mainClass>
+                    <mainClass>bio.prodesp.deduplicacao.DeduplicacaoServiceApplication</mainClass>
                 </configuration>
             </plugin>
             <plugin>

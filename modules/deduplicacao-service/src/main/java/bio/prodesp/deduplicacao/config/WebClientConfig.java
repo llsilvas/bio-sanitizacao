@@ -1,4 +1,4 @@
-package bio.prodesp.deduplicacao.service.config;
+package bio.prodesp.deduplicacao.config;
 
 import io.netty.channel.ChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;

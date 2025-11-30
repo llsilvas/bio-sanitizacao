@@ -1,4 +1,4 @@
-package bio.prodesp.deduplicacao.service.client;
+package bio.prodesp.deduplicacao.client;
 
 import bio.prodesp.deduplicacao.commons.model.dto.osia.*;
 import bio.prodesp.deduplicacao.commons.exception.OSIAException;

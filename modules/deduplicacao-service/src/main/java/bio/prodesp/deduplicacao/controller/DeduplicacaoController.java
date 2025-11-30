@@ -1,13 +1,13 @@
-package bio.prodesp.deduplicacao.service.controller;
+package bio.prodesp.deduplicacao.controller;
 
 import bio.prodesp.deduplicacao.commons.model.domain.ColetaMetadata;
 import bio.prodesp.deduplicacao.commons.model.dto.ResultadoDeduplicacao;
 import bio.prodesp.deduplicacao.commons.model.enums.StatusValidacao;
-import bio.prodesp.deduplicacao.service.controller.dto.DeduplicacaoRequest;
-import bio.prodesp.deduplicacao.service.controller.dto.DeduplicacaoResponse;
-import bio.prodesp.deduplicacao.service.mapper.DeduplicacaoRequestMapper;
-import bio.prodesp.deduplicacao.service.mapper.ResultadoDeduplicacaoMapper;
-import bio.prodesp.deduplicacao.service.service.DeduplicacaoService;
+import bio.prodesp.deduplicacao.controller.dto.DeduplicacaoRequest;
+import bio.prodesp.deduplicacao.controller.dto.DeduplicacaoResponse;
+import bio.prodesp.deduplicacao.mapper.DeduplicacaoRequestMapper;
+import bio.prodesp.deduplicacao.mapper.ResultadoDeduplicacaoMapper;
+import bio.prodesp.deduplicacao.service.DeduplicacaoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;

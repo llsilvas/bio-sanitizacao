@@ -1,4 +1,4 @@
-package bio.prodesp.deduplicacao.service.controller;
+package bio.prodesp.deduplicacao.controller;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

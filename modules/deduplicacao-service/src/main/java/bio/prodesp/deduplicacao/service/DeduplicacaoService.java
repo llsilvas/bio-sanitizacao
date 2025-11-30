@@ -1,4 +1,4 @@
-package bio.prodesp.deduplicacao.service.service;
+package bio.prodesp.deduplicacao.service;
 
 import bio.prodesp.deduplicacao.commons.exception.ABISViolacaoUnicidadeException;
 import bio.prodesp.deduplicacao.commons.exception.CriterioEntradaException;
@@ -9,7 +9,10 @@ import bio.prodesp.deduplicacao.commons.model.domain.TemplateMetadata;
 import bio.prodesp.deduplicacao.commons.model.dto.ResultadoDeduplicacao;
 import bio.prodesp.deduplicacao.commons.model.dto.osia.*;
 import bio.prodesp.deduplicacao.commons.model.enums.StatusValidacao;
-import bio.prodesp.deduplicacao.service.client.OSIAClient;
+import bio.prodesp.deduplicacao.repository.ColetaRepository;
+import bio.prodesp.deduplicacao.service.audit.AuditService;
+import bio.prodesp.deduplicacao.client.OSIAClient;
+import bio.prodesp.deduplicacao.service.idempotencia.IdempotenciaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,9 +36,9 @@ import java.util.stream.Collectors;
 public class DeduplicacaoService {
 
     private final OSIAClient osiaClient;
-    // TODO: Injetar ColetaRepository quando implementado
-    // TODO: Injetar AuditService quando implementado
-    // TODO: Injetar IdempotenciaService quando implementado
+    private final ColetaRepository coletaRepository;
+    private final AuditService auditService;
+    private final IdempotenciaService idempotenciaService;
 
     /**
      * Processa coleta biométrica de origem IIRGD
@@ -43,8 +46,25 @@ public class DeduplicacaoService {
      */
     @Transactional
     public ResultadoDeduplicacao processar(ColetaMetadata coleta) {
+        String idempotencyKey = idempotenciaService.gerarChave(
+            coleta.getCpf(),
+            coleta.getIdColeta()
+        );
+
+        // ✅ VERIFICAR IDEMPOTÊNCIA (Redis → OpenSearch fallback)
+        java.util.Optional<ResultadoDeduplicacao> resultadoAnterior =
+            idempotenciaService.verificar(idempotencyKey);
+
+        if (resultadoAnterior.isPresent()) {
+            log.info("Retornando resultado já processado - CPF: {}, ID: {}",
+                    coleta.getCpf(), coleta.getIdColeta());
+            return resultadoAnterior.get();
+        }
+
         log.info("Iniciando processamento IIRGD para CPF: {}, ID: {}",
                 coleta.getCpf(), coleta.getIdColeta());
+
+        long startTime = System.currentTimeMillis();
 
         try {
             // RN003 - Validar critérios de entrada
@@ -60,15 +80,88 @@ public class DeduplicacaoService {
             );
 
             // Aplicar regras de negócio baseado no resultado
-            return aplicarRegrasIIRGD(coleta, encounters, verifyResult);
+            ResultadoDeduplicacao resultado = aplicarRegrasIIRGD(coleta, encounters, verifyResult);
+
+            // ✅ ATUALIZAR OPENSEARCH (partial update)
+            boolean atualizado = coletaRepository.atualizarStatusProcessamento(
+                coleta.getIdColeta(),
+                resultado.getStatus(),
+                resultado.getAbisEncounterId(),
+                resultado.getMotivoInconclusivo(),
+                resultado.getMotivoRejeicao(),
+                resultado.getMatchScore() != null ? resultado.getMatchScore().doubleValue() : null
+            );
+
+            if (!atualizado) {
+                log.error("Falha ao atualizar OpenSearch - ID: {}", coleta.getIdColeta());
+            }
+
+            // ✅ REGISTRAR AUDITORIA
+            long duracao = System.currentTimeMillis() - startTime;
+            auditService.registrarComDuracao(
+                "PROCESSAMENTO_CONCLUIDO",
+                coleta.getCpf(),
+                coleta.getIdColeta(),
+                duracao,
+                "Status: " + resultado.getStatus()
+            );
+
+            // ✅ REGISTRAR IDEMPOTÊNCIA (Redis - 24h TTL)
+            idempotenciaService.registrar(idempotencyKey, resultado, 1440);
+
+            return resultado;
 
         } catch (CriterioEntradaException e) {
             log.warn("Critério de entrada não atendido: {}", e.getMessage());
-            return ResultadoDeduplicacao.invalido("Critério de entrada: " + e.getMessage());
+
+            ResultadoDeduplicacao resultado = ResultadoDeduplicacao.invalido(
+                "Critério de entrada: " + e.getMessage()
+            );
+
+            // ✅ AUDITAR FALHA DE VALIDAÇÃO
+            auditService.registrarErro(
+                "CRITERIO_ENTRADA",
+                coleta.getCpf(),
+                coleta.getIdColeta(),
+                e
+            );
+
+            return resultado;
+
         } catch (OSIAException e) {
-            return tratarErroOSIA(coleta, e);
+            ResultadoDeduplicacao resultado = tratarErroOSIA(coleta, e);
+
+            // ✅ AUDITAR ERRO OSIA
+            auditService.registrarErro(
+                "ERRO_OSIA",
+                coleta.getCpf(),
+                coleta.getIdColeta(),
+                e
+            );
+
+            // ✅ MARCAR ERRO NO OPENSEARCH
+            if (resultado.getStatus() == StatusValidacao.ERRO_REPROCESSAVEL) {
+                coletaRepository.marcarErroReprocessavel(coleta.getIdColeta(), e.getMessage());
+            } else if (resultado.getStatus() == StatusValidacao.INVALIDA) {
+                coletaRepository.marcarInvalida(coleta.getIdColeta(), e.getMessage());
+            }
+
+            return resultado;
+
         } catch (Exception e) {
             log.error("Erro inesperado no processamento", e);
+
+            // ✅ AUDITAR ERRO INESPERADO
+            auditService.registrarErro(
+                "ERRO_INESPERADO",
+                coleta.getCpf(),
+                coleta.getIdColeta(),
+                e
+            );
+
+            // ✅ MARCAR ERRO REPROCESSÁVEL NO OPENSEARCH
+            coletaRepository.marcarErroReprocessavel(coleta.getIdColeta(), e.getMessage());
+
             return ResultadoDeduplicacao.builder()
                     .status(StatusValidacao.ERRO_REPROCESSAVEL)
                     .mensagem(e.getMessage())
@@ -247,12 +340,13 @@ public class DeduplicacaoService {
     private ResultadoDeduplicacao marcarInconclusivo(ColetaMetadata coleta, String motivo) {
         log.warn("Marcando coleta como INCONCLUSIVA - CPF: {}, Motivo: {}", coleta.getCpf(), motivo);
 
-        // TODO: Implementar quando tiver repository
-        // coleta.setStatusValidacao(StatusValidacao.INCONCLUSIVA);
-        // coleta.setValidacaoPendente(true);
-        // coleta.setMotivoInconclusivo(motivo);
-        // coletaRepository.save(coleta);
-        // auditService.registrar("Coleta marcada como INCONCLUSIVA: " + motivo, coleta);
+        // ✅ AUDITAR INCONCLUSIVA
+        auditService.registrar(
+            "COLETA_INCONCLUSIVA",
+            coleta.getCpf(),
+            coleta.getIdColeta(),
+            motivo
+        );
 
         return ResultadoDeduplicacao.builder()
                 .status(StatusValidacao.INCONCLUSIVA)
@@ -275,10 +369,16 @@ public class DeduplicacaoService {
 
             log.info("Coleta cadastrada no ABIS com sucesso - Encounter ID: {}", response.getEncounterId());
 
-            // TODO: Registrar ID do ABIS para controle
-            // coleta.setAbisRecordId(response.getEncounterId());
-            // coletaRepository.save(coleta);
-            // auditService.registrarCadastroABIS(coleta, response);
+            // ✅ ATUALIZAR ABIS ENCOUNTER ID NO OPENSEARCH
+            coletaRepository.atualizarAbisEncounterId(coleta.getIdColeta(), response.getEncounterId());
+
+            // ✅ AUDITAR CADASTRO NO ABIS
+            auditService.registrarCadastroABIS(
+                coleta.getCpf(),
+                coleta.getIdColeta(),
+                response.getEncounterId(),
+                "ENROLL"
+            );
 
             return response.getEncounterId();
 
@@ -286,10 +386,21 @@ public class DeduplicacaoService {
             // RN010 - Tratar falha no ABIS
             if (e.getStatusCode() == 409) {
                 log.error("Violação de unicidade no ABIS - CPF: {}", coleta.getCpf());
-                // TODO: coleta.setStatusValidacao(StatusValidacao.INVALIDA);
-                // TODO: coleta.setMotivoRejeicao("Violação de unicidade no ABIS: " + e.getMessage());
-                // TODO: coletaRepository.save(coleta);
-                // TODO: auditService.registrarErro("Violação de unicidade", coleta, e);
+
+                // ✅ MARCAR COMO INVÁLIDA NO OPENSEARCH
+                coletaRepository.marcarInvalida(
+                    coleta.getIdColeta(),
+                    "Violação de unicidade no ABIS: " + e.getMessage()
+                );
+
+                // ✅ AUDITAR VIOLAÇÃO DE UNICIDADE
+                auditService.registrarErro(
+                    "VIOLACAO_UNICIDADE_ABIS",
+                    coleta.getCpf(),
+                    coleta.getIdColeta(),
+                    e
+                );
+
                 throw new ABISViolacaoUnicidadeException(e.getMessage(), e);
             }
             throw e;
