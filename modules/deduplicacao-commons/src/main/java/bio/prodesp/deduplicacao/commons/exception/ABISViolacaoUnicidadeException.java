@@ -4,7 +4,7 @@ package bio.prodesp.deduplicacao.commons.exception;
  * Exception quando há violação de unicidade no ABIS (RN010)
  * HTTP 409 Conflict - biometria já cadastrada para outra pessoa
  */
-public class ABISViolacaoUnicidadeException extends DeduplicacaoException {
+public class ABISViolacaoUnicidadeException extends OSIAException {
 
     private static final long serialVersionUID = 1L;
 
