@@ -66,7 +66,7 @@ ls -lh modules/*/target/*.jar
 # Deve mostrar:
 # modules/deduplicacao-commons/target/deduplicacao-commons-1.0.0-SNAPSHOT.jar
 # modules/deduplicacao-service/target/deduplicacao-service-1.0.0-SNAPSHOT.jar
-# modules/batch-processor/target/batch-processor-1.0.0-SNAPSHOT.jar
+# modules/sanitizacao-batch/target/sanitizacao-batch-1.0.0-SNAPSHOT.jar
 ```
 
 ## Profiles Disponíveis
@@ -87,7 +87,7 @@ ls -lh modules/*/target/*.jar
 **Como usar**:
 ```bash
 export SPRING_PROFILES_ACTIVE=local
-./build.sh spring-boot:run -pl modules/batch-processor
+./build.sh spring-boot:run -pl modules/sanitizacao-batch
 ```
 
 ### 2. Dev (`application-dev.yml`)
@@ -175,9 +175,9 @@ docker-compose ps
 
 3. **Executar aplicações**:
 ```bash
-# Batch Processor
+# Sanitização Batch
 export SPRING_PROFILES_ACTIVE=local
-./build.sh spring-boot:run -pl modules/batch-processor
+./build.sh spring-boot:run -pl modules/sanitizacao-batch
 
 # Deduplicação Service (em outro terminal)
 export SPRING_PROFILES_ACTIVE=local
@@ -217,7 +217,7 @@ export BATCH_PARTITION_GRID_SIZE=20
 
 2. **Executar aplicação**:
 ```bash
-java -jar modules/batch-processor/target/batch-processor-1.0.0-SNAPSHOT.jar
+java -jar modules/sanitizacao-batch/target/sanitizacao-batch-1.0.0-SNAPSHOT.jar
 ```
 
 ## Throughput e Performance
@@ -247,7 +247,7 @@ export BATCH_CHUNK_SIZE=1000  # Default: 500
 
 #### 3. **Ajustar Thread Pool**
 
-Editar [application-prod.yml](modules/batch-processor/src/main/resources/application-prod.yml):
+Editar [application-prod.yml](modules/sanitizacao-batch/src/main/resources/application-prod.yml):
 ```yaml
 server:
   tomcat:
@@ -274,7 +274,7 @@ export OPENSEARCH_SCROLL_TIMEOUT=15m  # Default: 10m
 #### Metrics Prometheus
 
 ```bash
-# Batch Processor
+# Sanitização Batch
 curl http://localhost:8081/actuator/prometheus | grep batch_
 
 # Deduplicação Service
@@ -285,10 +285,10 @@ curl http://localhost:8080/actuator/prometheus | grep dedup_
 
 ```bash
 # Acompanhar progresso do batch
-tail -f /var/log/batch-processor/application.log | grep "Partition.*writing"
+tail -f /var/log/sanitizacao-batch/application.log | grep "Partition.*writing"
 
 # Ver estatísticas finais
-tail -f /var/log/batch-processor/application.log | grep "Job.*finished"
+tail -f /var/log/sanitizacao-batch/application.log | grep "Job.*finished"
 ```
 
 ## Deployment
@@ -301,7 +301,7 @@ tail -f /var/log/batch-processor/application.log | grep "Job.*finished"
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: batch-processor-config
+  name: sanitizacao-batch-config
   namespace: bio-deduplicacao
 data:
   SPRING_PROFILES_ACTIVE: "prod"
@@ -326,26 +326,26 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: batch-processor
+  name: sanitizacao-batch
   namespace: bio-deduplicacao
 spec:
   replicas: 1  # Apenas 1 réplica devido ao distributed lock
   selector:
     matchLabels:
-      app: batch-processor
+      app: sanitizacao-batch
   template:
     metadata:
       labels:
-        app: batch-processor
+        app: sanitizacao-batch
     spec:
       containers:
-      - name: batch-processor
-        image: your-ecr-repo/batch-processor:latest
+      - name: sanitizacao-batch
+        image: your-ecr-repo/sanitizacao-batch:latest
         envFrom:
         - configMapRef:
-            name: batch-processor-config
+            name: sanitizacao-batch-config
         - secretRef:
-            name: batch-processor-secrets
+            name: sanitizacao-batch-secrets
         resources:
           requests:
             memory: "8Gi"
@@ -385,13 +385,13 @@ spec:
         spec:
           restartPolicy: OnFailure
           containers:
-          - name: batch-processor
-            image: your-ecr-repo/batch-processor:latest
+          - name: sanitizacao-batch
+            image: your-ecr-repo/sanitizacao-batch:latest
             envFrom:
             - configMapRef:
-                name: batch-processor-config
+                name: sanitizacao-batch-config
             - secretRef:
-                name: batch-processor-secrets
+                name: sanitizacao-batch-secrets
             resources:
               requests:
                 memory: "8Gi"
@@ -405,18 +405,18 @@ spec:
 
 ```bash
 # Build da imagem
-docker build -t batch-processor:latest -f modules/batch-processor/Dockerfile .
+docker build -t sanitizacao-batch:latest -f modules/sanitizacao-batch/Dockerfile .
 
 # Run com variáveis de ambiente
 docker run -d \
-  --name batch-processor \
+  --name sanitizacao-batch \
   -e SPRING_PROFILES_ACTIVE=prod \
   -e DB_HOST=your-db-host \
   -e DB_PASSWORD=your-password \
   -e REDIS_HOST=your-redis-host \
   -e OPENSEARCH_HOST=your-opensearch-host \
   -p 8081:8081 \
-  batch-processor:latest
+  sanitizacao-batch:latest
 ```
 
 ## Troubleshooting
@@ -464,7 +464,7 @@ export JAVA_OPTS="-Xms8g -Xmx20g -XX:+UseZGC"
 export LOGGING_LEVEL_BR_GOV_SP_PRODESP=DEBUG
 
 # Ver stack traces completos
-tail -f /var/log/batch-processor/application.log | grep -A 20 "ERROR"
+tail -f /var/log/sanitizacao-batch/application.log | grep -A 20 "ERROR"
 ```
 
 ## Contato e Suporte

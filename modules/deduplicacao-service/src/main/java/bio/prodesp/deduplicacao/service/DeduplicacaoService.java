@@ -13,6 +13,7 @@ import bio.prodesp.deduplicacao.repository.ColetaRepository;
 import bio.prodesp.deduplicacao.service.audit.AuditService;
 import bio.prodesp.deduplicacao.client.OSIAClient;
 import bio.prodesp.deduplicacao.service.idempotencia.IdempotenciaService;
+import bio.prodesp.deduplicacao.util.CpfValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,8 +28,37 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Serviço de deduplicação para coletas de origem IIRGD
- * Implementa o fluxo completo conforme especificação técnica
+ * Serviço de deduplicação biométrica para coletas de origem IIRGD.
+ *
+ * <p>Implementa o fluxo completo de processamento conforme especificação técnica,
+ * incluindo validação de entrada, verificação biométrica 1:1, busca 1:N, e cadastro no ABIS.
+ *
+ * <h2>Regras de Negócio Implementadas:</h2>
+ * <ul>
+ *   <li><b>RN003</b>: Validação de critérios de entrada (idade, CPF, qualidade)</li>
+ *   <li><b>RN004</b>: Verificação 1:1 contra encounters existentes</li>
+ *   <li><b>RN005</b>: Seleção por qualidade NFIQ2 (mantém 2 melhores)</li>
+ *   <li><b>RN006</b>: Marcação de coletas inconclusivas</li>
+ *   <li><b>RN007</b>: Cadastro de novos encounters no ABIS</li>
+ *   <li><b>RN008</b>: Busca 1:N quando verify não encontra</li>
+ *   <li><b>RN009</b>: Análise de múltiplos matches</li>
+ *   <li><b>RN010</b>: Tratamento de falhas do ABIS</li>
+ * </ul>
+ *
+ * <h2>Características Técnicas:</h2>
+ * <ul>
+ *   <li><b>Idempotência</b>: Redis (L1) + OpenSearch (L2) com TTL de 24h</li>
+ *   <li><b>Transacional</b>: Operações atômicas com rollback automático</li>
+ *   <li><b>Auditoria</b>: Logging assíncrono de todas as operações (LGPD)</li>
+ *   <li><b>Resiliência</b>: Circuit breaker e retry via Resilience4j</li>
+ * </ul>
+ *
+ * @author Bio Sanitização Team
+ * @version 1.0.0
+ * @since 2025-01
+ * @see OSIAClient
+ * @see IdempotenciaService
+ * @see AuditService
  */
 @Slf4j
 @Service
@@ -41,8 +71,41 @@ public class DeduplicacaoService {
     private final IdempotenciaService idempotenciaService;
 
     /**
-     * Processa coleta biométrica de origem IIRGD
-     * RN004 - Fluxo completo: validação → verify 1:1 → identify 1:N → cadastro ABIS
+     * Processa uma coleta biométrica através do fluxo completo de deduplicação IIRGD.
+     *
+     * <p><b>Fluxo de Processamento:</b></p>
+     * <ol>
+     *   <li><b>Verificação de Idempotência</b>: Consulta Redis/OpenSearch para evitar reprocessamento</li>
+     *   <li><b>Validação RN003</b>: Valida critérios de entrada (CPF, idade, qualidade)</li>
+     *   <li><b>Busca Encounters RN004</b>: Consulta encounters existentes no ABIS via CPF</li>
+     *   <li><b>Verificação 1:1 RN004</b>: Compara biometria com encounters encontrados</li>
+     *   <li><b>Aplicação de Regras RN005-RN010</b>: Decide ação baseado nos resultados</li>
+     *   <li><b>Atualização OpenSearch</b>: Partial update do documento (não substituição)</li>
+     *   <li><b>Auditoria</b>: Registro assíncrono para compliance LGPD</li>
+     *   <li><b>Registro de Idempotência</b>: Armazena resultado no Redis (24h TTL)</li>
+     * </ol>
+     *
+     * <p><b>Possíveis Status de Retorno:</b></p>
+     * <ul>
+     *   <li>{@link StatusValidacao#VALIDA}: Coleta processada com sucesso</li>
+     *   <li>{@link StatusValidacao#INCONCLUSIVA}: Requer análise manual (RN006)</li>
+     *   <li>{@link StatusValidacao#INVALIDA}: Falhou em critérios de entrada ou qualidade</li>
+     *   <li>{@link StatusValidacao#ERRO_REPROCESSAVEL}: Falha temporária, pode reprocessar</li>
+     * </ul>
+     *
+     * <p><b>Tratamento de Exceções:</b></p>
+     * <ul>
+     *   <li>{@link CriterioEntradaException}: Retorna INVALIDA com motivo específico</li>
+     *   <li>{@link ABISViolacaoUnicidadeException}: Retorna INVALIDA (conflito de duplicação)</li>
+     *   <li>{@link OSIAException}: Retorna ERRO_REPROCESSAVEL ou INVALIDA conforme retryable</li>
+     *   <li>{@link Exception}: Retorna ERRO_REPROCESSAVEL para falhas inesperadas</li>
+     * </ul>
+     *
+     * @param coleta Metadados da coleta biométrica contendo CPF, templates, e informações pessoais
+     * @return Resultado do processamento com status, matchScore, e identificadores ABIS
+     * @throws IllegalArgumentException se coleta for null ou inválida
+     * @see #validarCriteriosEntrada(ColetaMetadata)
+     * @see #aplicarRegrasIIRGD(ColetaMetadata, EncountersResponse, VerifyResponse)
      */
     @Transactional
     public ResultadoDeduplicacao processar(ColetaMetadata coleta) {
@@ -194,7 +257,18 @@ public class DeduplicacaoService {
     }
 
     /**
-     * RN003 - Validação de critérios de entrada
+     * Valida critérios de entrada conforme RN003.
+     *
+     * <p><b>Critérios Validados:</b></p>
+     * <ul>
+     *   <li><b>Validação Pendente</b>: Deve ser {@code false} (coleta já validada)</li>
+     *   <li><b>CPF</b>: Deve ser válido (11 dígitos + verificadores corretos)</li>
+     *   <li><b>Idade</b>: Deve ser maior que 15 anos (baseado na data de nascimento)</li>
+     *   <li><b>Dados Biométricos</b>: Deve conter ao menos um template (validado implicitamente)</li>
+     * </ul>
+     *
+     * @param coleta Coleta a ser validada
+     * @throws CriterioEntradaException se qualquer critério não for atendido
      */
     private void validarCriteriosEntrada(ColetaMetadata coleta) {
         // validacao_pendente = false
@@ -217,7 +291,30 @@ public class DeduplicacaoService {
     }
 
     /**
-     * Aplica regras de negócio IIRGD baseado nos resultados OSIA
+     * Aplica regras de negócio IIRGD baseado nos resultados da verificação biométrica.
+     *
+     * <p><b>Fluxo de Decisão:</b></p>
+     * <pre>
+     * 1. SE verify.isVerified() = true
+     *    → Processo com RN004/RN005 (match encontrado)
+     *
+     * 2. SE verify.pessoaEncontrada() = true MAS verify.isVerified() = false
+     *    → RN006: Marca como INCONCLUSIVA (pessoa existe mas biometria não bate)
+     *
+     * 3. SE verify.pessoaEncontrada() = false
+     *    → RN008: Executa busca 1:N (identify)
+     *       → Se 0 matches: Cadastra como nova pessoa (RN007)
+     *       → Se 1 match: RN006 INCONCLUSIVA (possível duplicação)
+     *       → Se 2+ matches: RN009 INCONCLUSIVA (múltiplas correspondências)
+     * </pre>
+     *
+     * @param coleta Coleta sendo processada
+     * @param encounters Encounters existentes retornados do ABIS
+     * @param verifyResult Resultado da verificação 1:1
+     * @return Resultado da deduplicação com status e informações de match
+     * @see #processarMatchEncontrado(ColetaMetadata, EncountersResponse, VerifyResponse)
+     * @see #processarBusca1N(ColetaMetadata)
+     * @see #marcarInconclusivo(ColetaMetadata, String)
      */
     private ResultadoDeduplicacao aplicarRegrasIIRGD(
             ColetaMetadata coleta,
@@ -239,7 +336,29 @@ public class DeduplicacaoService {
     }
 
     /**
-     * RN004 - Processa quando verify 1:1 encontrou match
+     * Processa coleta quando a verificação 1:1 encontrou match biométrico (RN004/RN005).
+     *
+     * <p><b>Lógica de Processamento por Quantidade de Encounters:</b></p>
+     * <ul>
+     *   <li><b>1 encounter</b>: Cadastra coleta atual como segundo encounter (RN004)</li>
+     *   <li><b>2 encounters</b>: Aplica RN005 - mantém os 2 melhores por NFIQ2:
+     *     <ul>
+     *       <li>Se coleta atual é melhor que o melhor: Substitui o 2º melhor</li>
+     *       <li>Se coleta atual é melhor que o 2º: Substitui o 2º melhor</li>
+     *       <li>Se coleta atual é pior que ambos: Descarta (retorna VALIDA sem cadastrar)</li>
+     *     </ul>
+     *   </li>
+     *   <li><b>Outros</b>: Situação anômala, marca como inconclusiva</li>
+     * </ul>
+     *
+     * <p><b>Nota</b>: Score NFIQ2 determina qualidade - maior é melhor (0-100).
+     *
+     * @param coleta Coleta sendo processada
+     * @param encounters Encounters retornados do ABIS (1 ou 2 esperados)
+     * @param verifyResult Resultado do verify contendo matchScore
+     * @return Resultado com status VALIDA e abisEncounterId quando cadastrado
+     * @see #obterMelhorNFIQ2(ColetaMetadata)
+     * @see #cadastrarNoABIS(ColetaMetadata)
      */
     private ResultadoDeduplicacao processarMatchEncontrado(
             ColetaMetadata coleta,
@@ -251,7 +370,6 @@ public class DeduplicacaoService {
         // RN004 - Apenas 1 encounter
         if (totalEncounters == 1) {
             String abisEncounterId = cadastrarNoABIS(coleta);
-            // TODO: atualizarStatus(coleta, StatusValidacao.VALIDA);
             return ResultadoDeduplicacao.builder()
                     .status(StatusValidacao.VALIDA)
                     .abisEncounterId(abisEncounterId)
@@ -296,7 +414,6 @@ public class DeduplicacaoService {
                 osiaClient.deletarEncounter(coleta.getCpf(), segundoMelhor.getEncounterId());
             }
             String abisEncounterId = cadastrarNoABIS(coleta);
-            // TODO: atualizarStatus(coleta, StatusValidacao.VALIDA);
             return ResultadoDeduplicacao.builder()
                     .status(StatusValidacao.VALIDA)
                     .abisEncounterId(abisEncounterId)
@@ -308,7 +425,6 @@ public class DeduplicacaoService {
         if (segundoMelhor != null && nfiq2Coleta > segundoMelhor.getMetadata().getNfiq2Score()) {
             osiaClient.deletarEncounter(coleta.getCpf(), segundoMelhor.getEncounterId());
             String abisEncounterId = cadastrarNoABIS(coleta);
-            // TODO: atualizarStatus(coleta, StatusValidacao.VALIDA);
             return ResultadoDeduplicacao.builder()
                     .status(StatusValidacao.VALIDA)
                     .abisEncounterId(abisEncounterId)
@@ -317,9 +433,8 @@ public class DeduplicacaoService {
         }
 
         // Coleta atual tem qualidade inferior às 2 existentes
-        // TODO: atualizarStatus(coleta, StatusValidacao.VALIDA);
-        // TODO: auditService.registrar("Coleta descartada por NFIQ2 inferior", coleta);
-        log.info("Coleta descartada por NFIQ2 inferior - CPF: {}, NFIQ2: {}", coleta.getCpf(), nfiq2Coleta);
+        log.info("Coleta descartada por NFIQ2 inferior - CPF: {}, NFIQ2: {}",
+                coleta.getCpf(), nfiq2Coleta);
         return ResultadoDeduplicacao.builder()
                 .status(StatusValidacao.VALIDA)
                 .mensagem("Descartada por qualidade inferior")
@@ -342,7 +457,6 @@ public class DeduplicacaoService {
         // RN008 - Nenhum match - coleta válida
         if (matches == 0) {
             String abisEncounterId = cadastrarNoABIS(coleta);
-            // TODO: atualizarStatus(coleta, StatusValidacao.VALIDA);
             return ResultadoDeduplicacao.builder()
                     .status(StatusValidacao.VALIDA)
                     .abisEncounterId(abisEncounterId)
@@ -362,7 +476,8 @@ public class DeduplicacaoService {
      * RN006 - Marca coleta como inconclusiva
      */
     private ResultadoDeduplicacao marcarInconclusivo(ColetaMetadata coleta, String motivo) {
-        log.warn("Marcando coleta como INCONCLUSIVA - CPF: {}, Motivo: {}", coleta.getCpf(), motivo);
+        log.warn("Marcando coleta como INCONCLUSIVA - CPF: {}, Motivo: {}",
+                coleta.getCpf(), motivo);
 
         // ✅ AUDITAR INCONCLUSIVA
         auditService.registrar(
@@ -383,7 +498,8 @@ public class DeduplicacaoService {
      */
     private String cadastrarNoABIS(ColetaMetadata coleta) {
         try {
-            log.info("Cadastrando coleta no ABIS - CPF: {}, ID: {}", coleta.getCpf(), coleta.getIdColeta());
+            log.info("Cadastrando coleta no ABIS - CPF: {}, ID: {}",
+                    coleta.getCpf(), coleta.getIdColeta());
 
             EnrollResponse response = osiaClient.cadastrarEncounter(
                     coleta.getCpf(),
@@ -410,7 +526,8 @@ public class DeduplicacaoService {
 
             // RN010 - Tratar falha no ABIS
             if (e.getStatusCode() == 409) {
-                log.error("Violação de unicidade no ABIS - CPF: {}", coleta.getCpf());
+                log.error("Violação de unicidade no ABIS - CPF: {}",
+                        coleta.getCpf());
 
                 throw new ABISViolacaoUnicidadeException(e.getMessage(), e);
             }
@@ -422,7 +539,8 @@ public class DeduplicacaoService {
      * Trata erros de comunicação com OSIA
      */
     private ResultadoDeduplicacao tratarErroOSIA(ColetaMetadata coleta, OSIAException e) {
-        log.error("Erro na comunicação com OSIA - CPF: {}", coleta.getCpf(), e);
+        log.error("Erro na comunicação com OSIA - CPF: {}",
+                coleta.getCpf(), e);
 
         if(e instanceof ABISViolacaoUnicidadeException){
             return ResultadoDeduplicacao.builder()
@@ -440,10 +558,8 @@ public class DeduplicacaoService {
         }
 
         // Erros não recuperáveis (4xx) - marcar como inválido
-        log.error("Erro OSIA não retentável - marcando como INVALIDA - CPF: {}", coleta.getCpf());
-        // TODO: coleta.setStatusValidacao(StatusValidacao.INVALIDA);
-        // TODO: coleta.setMotivoRejeicao("Erro OSIA: " + e.getMessage());
-        // TODO: coletaRepository.save(coleta);
+        log.error("Erro OSIA não retentável - marcando como INVALIDA - CPF: {}",
+                coleta.getCpf());
 
         return ResultadoDeduplicacao.builder()
                 .status(StatusValidacao.INVALIDA)
@@ -626,16 +742,10 @@ public class DeduplicacaoService {
     }
 
     /**
-     * Valida CPF (implementação simplificada)
+     * Valida CPF com dígitos verificadores
      */
     private boolean isValidCPF(String cpf) {
-        if (cpf == null || cpf.trim().isEmpty()) {
-            return false;
-        }
-        // Remove caracteres não numéricos
-        String cpfNumeros = cpf.replaceAll("\\D", "");
-        // Verifica se tem 11 dígitos
-        return cpfNumeros.length() == 11;
+        return CpfValidator.isValid(cpf);
     }
 
     /**

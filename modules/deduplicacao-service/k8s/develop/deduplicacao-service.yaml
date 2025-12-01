@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: deduplicacao-service
+  namespace: barramento-biometrico
+  labels:
+    app: deduplicacao-service
+    team: biometria
+    codigo: deduplicacao-service
+spec:
+  type: ClusterIP
+  selector:
+    app: deduplicacao-service
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080

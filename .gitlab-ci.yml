@@ -18,7 +18,7 @@ variables:
   
   # Imagens Docker
   DEDUPLICACAO_SERVICE_IMAGE: "${ECR_REGISTRY}/deduplicacao-service"
-  BATCH_PROCESSOR_IMAGE: "${ECR_REGISTRY}/batch-processor"
+  BATCH_PROCESSOR_IMAGE: "${ECR_REGISTRY}/sanitizacao-batch"
 
 # Cache para acelerar builds
 cache:
@@ -92,12 +92,12 @@ build:batch:
   image: ${MAVEN_IMAGE}
   needs: ["build:commons"]
   script:
-    - echo "Building batch-processor..."
-    - cd modules/batch-processor
+    - echo "Building sanitizacao-batch..."
+    - cd modules/sanitizacao-batch
     - mvn ${MAVEN_CLI_OPTS} clean compile
   artifacts:
     paths:
-      - modules/batch-processor/target
+      - modules/sanitizacao-batch/target
     expire_in: 1 hour
   only:
     - merge_requests
@@ -231,12 +231,12 @@ package:batch:
     - test:unit
     - test:integration
   script:
-    - echo "Packaging batch-processor..."
-    - cd modules/batch-processor
+    - echo "Packaging sanitizacao-batch..."
+    - cd modules/sanitizacao-batch
     - mvn ${MAVEN_CLI_OPTS} package -DskipTests
   artifacts:
     paths:
-      - modules/batch-processor/target/*.jar
+      - modules/sanitizacao-batch/target/*.jar
     expire_in: 1 week
   only:
     - main
@@ -290,8 +290,8 @@ docker:build:batch:
   needs:
     - package:batch
   script:
-    - echo "Building Docker image for batch-processor..."
-    - cd modules/batch-processor
+    - echo "Building Docker image for sanitizacao-batch..."
+    - cd modules/sanitizacao-batch
     - |
       if [ "$CI_COMMIT_BRANCH" == "main" ]; then
         TAG="latest"
@@ -346,13 +346,13 @@ deploy:staging:batch:
   needs:
     - docker:build:batch
   script:
-    - echo "Deploying batch-processor to STAGING..."
+    - echo "Deploying sanitizacao-batch to STAGING..."
     - |
       TAG="${CI_COMMIT_SHORT_SHA}"
-      kubectl set image deployment/batch-processor \
-        batch-processor=${BATCH_PROCESSOR_IMAGE}:${TAG} \
+      kubectl set image deployment/sanitizacao-batch \
+        sanitizacao-batch=${BATCH_PROCESSOR_IMAGE}:${TAG} \
         -n biometric-staging
-    - kubectl rollout status deployment/batch-processor -n biometric-staging --timeout=5m
+    - kubectl rollout status deployment/sanitizacao-batch -n biometric-staging --timeout=5m
   environment:
     name: staging
   only:
@@ -427,7 +427,7 @@ deploy:production:batch:
     - docker:build:batch
     - integration:test:staging
   script:
-    - echo "Deploying batch-processor to PRODUCTION..."
+    - echo "Deploying sanitizacao-batch to PRODUCTION..."
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
         TAG="$CI_COMMIT_TAG"
@@ -435,10 +435,10 @@ deploy:production:batch:
         TAG="latest"
       fi
     - |
-      kubectl set image deployment/batch-processor \
-        batch-processor=${BATCH_PROCESSOR_IMAGE}:${TAG} \
+      kubectl set image deployment/sanitizacao-batch \
+        sanitizacao-batch=${BATCH_PROCESSOR_IMAGE}:${TAG} \
         -n biometric-production
-    - kubectl rollout status deployment/batch-processor -n biometric-production --timeout=10m
+    - kubectl rollout status deployment/sanitizacao-batch -n biometric-production --timeout=10m
   environment:
     name: production
   when: manual
@@ -458,9 +458,9 @@ rollback:production:
   script:
     - echo "Rolling back PRODUCTION deployment..."
     - kubectl rollout undo deployment/deduplicacao-service -n biometric-production
-    - kubectl rollout undo deployment/batch-processor -n biometric-production
+    - kubectl rollout undo deployment/sanitizacao-batch -n biometric-production
     - kubectl rollout status deployment/deduplicacao-service -n biometric-production
-    - kubectl rollout status deployment/batch-processor -n biometric-production
+    - kubectl rollout status deployment/sanitizacao-batch -n biometric-production
   environment:
     name: production
   when: manual

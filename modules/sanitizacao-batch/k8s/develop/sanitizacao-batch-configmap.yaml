@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sanitizacao-batch-config
+  namespace: barramento-biometrico
+  labels:
+    app: sanitizacao-batch
+    team: biometria
+    codigo: sanitizacao-batch
+
+data:
+  SPRING_PROFILES_ACTIVE: "develop,eks"
+  DB_HOST: "sqlserver"
+  DB_PORT: "1433"
+  DB_NAME: "sanitizacao_metadata"
+  DB_USER: "sa"
+  DB_PASSWORD: "YourStrong@Passw0rd"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  OPENSEARCH_HOST: "opensearch"
+  OPENSEARCH_PORT: "9200"
+  OPENSEARCH_USER: "admin"
+  OPENSEARCH_PASSWORD: "Admin@123"
+  OPENSEARCH_SCHEME: "https"
+  OPENSEARCH_SSL_VERIFY: "false"
+  OPENSEARCH_INDEX: "biometric-data"
+  DEDUPLICACAO_SERVICE_URL: "http://deduplicacao-service:8080"
+  SANITIZACAO_PARTITION_GRID_SIZE: "5"

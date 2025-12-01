@@ -2,33 +2,6 @@ spring:
   application:
     name: deduplicacao-service
 
-  # SQL Server - Banco de dados principal
-  datasource:
-    url: jdbc:sqlserver://${DB_HOST:localhost}:${DB_PORT:1433};databaseName=${DB_NAME:deduplicacao};encrypt=false;trustServerCertificate=true
-    username: ${DB_USER:sa}
-    password: ${DB_PASSWORD:YourStrong@Passw0rd}
-    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
-    hikari:
-      maximum-pool-size: 30
-      minimum-idle: 10
-      connection-timeout: 60000
-      idle-timeout: 600000
-      max-lifetime: 1800000
-
-  jpa:
-    hibernate:
-      # validate: Apenas valida schema (NÃO cria/altera tabelas)
-      # IMPORTANTE: Schema deve ser criado manualmente ou via Flyway
-      ddl-auto: validate
-    show-sql: false
-    properties:
-      hibernate:
-        format_sql: true
-        jdbc:
-          batch_size: 20
-        order_inserts: true
-        order_updates: true
-
   # Cache com Redis
   cache:
     type: redis
@@ -100,9 +73,9 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 logging:

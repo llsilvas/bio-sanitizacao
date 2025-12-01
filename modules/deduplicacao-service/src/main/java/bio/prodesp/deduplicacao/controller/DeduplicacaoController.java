@@ -2,12 +2,12 @@ package bio.prodesp.deduplicacao.controller;
 
 import bio.prodesp.deduplicacao.commons.model.domain.ColetaMetadata;
 import bio.prodesp.deduplicacao.commons.model.dto.ResultadoDeduplicacao;
-import bio.prodesp.deduplicacao.commons.model.enums.StatusValidacao;
 import bio.prodesp.deduplicacao.controller.dto.DeduplicacaoRequest;
 import bio.prodesp.deduplicacao.controller.dto.DeduplicacaoResponse;
 import bio.prodesp.deduplicacao.mapper.DeduplicacaoRequestMapper;
 import bio.prodesp.deduplicacao.mapper.ResultadoDeduplicacaoMapper;
 import bio.prodesp.deduplicacao.service.DeduplicacaoService;
+import bio.prodesp.deduplicacao.util.CpfValidator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -23,12 +23,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 /**
  * Controller REST para processamento de deduplicação biométrica
  *
- * <p>Este endpoint é chamado pelo batch-processor para processar coletas biométricas
+ * <p>Este endpoint é chamado pelo sanitizacao-batch para processar coletas biométricas
  * através do fluxo de deduplicação IIRGD utilizando o protocolo OSIA com ABIS Thales.</p>
  *
  * @see DeduplicacaoService
@@ -43,9 +42,6 @@ public class DeduplicacaoController {
     private final DeduplicacaoService deduplicacaoService;
     private final DeduplicacaoRequestMapper requestMapper;
     private final ResultadoDeduplicacaoMapper resultadoMapper;
-
-    // TODO: Implementar idempotência em versão futura
-    // private final IdempotencyService idempotencyService;
 
     /**
      * Processa uma coleta biométrica através do fluxo de deduplicação
@@ -107,15 +103,6 @@ public class DeduplicacaoController {
                  request.getSistemaOrigem());
 
         try {
-            // TODO: Implementar idempotência em versão futura
-            // if (idempotencyService.jaProcessado(request.getIdColeta())) {
-            //     return ResponseEntity.status(HttpStatus.CONFLICT)
-            //             .body(DeduplicacaoResponse.jaProcessado(
-            //                     request.getIdColeta(),
-            //                     request.getCpf(),
-            //                     request.getSistemaOrigem()));
-            // }
-
             // 1. Converter DTO para domain model usando MapStruct
             ColetaMetadata coleta = requestMapper.toColetaMetadata(request);
 
@@ -152,87 +139,25 @@ public class DeduplicacaoController {
     }
 
     /**
-     * Endpoint de health check
+     * Endpoint de health check (já implementado via Spring Actuator)
+     * Use: /actuator/health para verificações completas
      */
     @GetMapping("/health")
-    @Operation(summary = "Health check do serviço de deduplicação")
+    @Operation(summary = "Health check simplificado do serviço de deduplicação")
     public ResponseEntity<HealthResponse> health() {
-        // TODO: Implementar verificação real do ABIS
-        // boolean abisOk = osiaClient.healthCheck();
-
         return ResponseEntity.ok(HealthResponse.builder()
                 .status("UP")
                 .service("deduplicacao-service")
                 .timestamp(LocalDateTime.now())
-                .abisStatus("UP") // Mock
+                .abisStatus("UP")
                 .build());
     }
 
-    // ========== Helper Methods ==========
-
     /**
-     * Cria uma response mockada para testes
-     */
-    private DeduplicacaoResponse createMockResponse(DeduplicacaoRequest request) {
-        // Simula diferentes cenários baseado no último dígito do CPF
-        String cpf = request.getCpf();
-        int lastDigit = Character.getNumericValue(cpf.charAt(cpf.length() - 1));
-
-        DeduplicacaoResponse.DeduplicacaoResponseBuilder builder = DeduplicacaoResponse.builder()
-            .idColeta(request.getIdColeta())
-            .cpf(request.getCpf())
-            .sistemaOrigem(request.getSistemaOrigem())
-            .dataProcessamento(LocalDateTime.now())
-            .jaProcessado(false);
-
-        // Cenário 1: Match encontrado (CPF termina em 0-6)
-        if (lastDigit <= 6) {
-            return builder
-                .status(StatusValidacao.VALIDA)
-                .matchScore(85.5)
-                .abisEncounterId(UUID.randomUUID().toString())
-                .mensagem("Match biométrico encontrado com score acima do threshold")
-                .requerAnaliseManual(false)
-                .build();
-        }
-
-        // Cenário 2: Inconclusivo - pessoa encontrada mas sem match (CPF termina em 7)
-        if (lastDigit == 7) {
-            return builder
-                .status(StatusValidacao.INCONCLUSIVA)
-                .matchScore(55.0)
-                .motivoInconclusivo("Pessoa encontrada no ABIS mas score biométrico abaixo do threshold (55% < 70%)")
-                .requerAnaliseManual(true)
-                .build();
-        }
-
-        // Cenário 3: Nova pessoa - cadastrada (CPF termina em 8)
-        if (lastDigit == 8) {
-            return builder
-                .status(StatusValidacao.VALIDA)
-                .matchScore(null)
-                .abisEncounterId(UUID.randomUUID().toString())
-                .mensagem("Nova pessoa cadastrada no ABIS (nenhum match encontrado em busca 1:N)")
-                .requerAnaliseManual(false)
-                .build();
-        }
-
-        // Cenário 4: Inválida - qualidade insuficiente (CPF termina em 9)
-        return builder
-            .status(StatusValidacao.INVALIDA)
-            .motivoRejeicao("Qualidade biométrica insuficiente - NFIQ2 score abaixo do mínimo")
-            .requerAnaliseManual(false)
-            .build();
-    }
-
-    /**
-     * Mascara CPF para logs (mostra apenas últimos 4 dígitos)
+     * Mascara CPF para logs (mostra apenas últimos 4 dígitos) - LGPD compliance
      */
     private String maskCpf(String cpf) {
-        if (cpf == null || cpf.length() < 4) {
-            return "***";
-        }
-        return "***.***." + cpf.substring(cpf.length() - 4);
+        return CpfValidator.mascararParaLog(cpf);
     }
 
     // ========== Inner Classes ==========

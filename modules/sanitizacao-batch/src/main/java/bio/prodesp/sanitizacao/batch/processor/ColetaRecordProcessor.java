@@ -106,7 +106,7 @@ public class ColetaRecordProcessor implements ItemProcessor<ColetaRecord, Coleta
      * Endpoint: POST /api/v1/deduplicacao/processar
      *
      * <p>IMPORTANTE: O endpoint espera DeduplicacaoRequest (DTO), não ColetaMetadata (domain).
-     * Como o batch-processor não tem dependência do deduplicacao-service, fazemos a conversão manualmente.
+     * Como o sanitizacao-batch não tem dependência do deduplicacao-service, fazemos a conversão manualmente.
      */
     private ResultadoDeduplicacao callDeduplicationService(ColetaRecord record) {
         try {
@@ -142,7 +142,7 @@ public class ColetaRecordProcessor implements ItemProcessor<ColetaRecord, Coleta
     /**
      * Converte ColetaMetadata para DeduplicacaoRequest (estrutura esperada pelo controller)
      *
-     * <p>Esta conversão manual é necessária porque batch-processor não depende de deduplicacao-service.
+     * <p>Esta conversão manual é necessária porque sanitizacao-batch não depende de deduplicacao-service.
      * Em produção, considere extrair os DTOs para um módulo compartilhado ou usar biblioteca de conversão.
      *
      * @param coleta Domain model do commons

@@ -120,12 +120,12 @@ services:
       - bio-network
     restart: unless-stopped
 
-  # Batch Processor
-  batch-processor:
+  # Sanitização Batch
+  sanitizacao-batch:
     build:
       context: .
-      dockerfile: modules/batch-processor/Dockerfile
-    container_name: bio-batch-processor
+      dockerfile: modules/sanitizacao-batch/Dockerfile
+    container_name: bio-sanitizacao-batch
     environment:
       - SPRING_PROFILES_ACTIVE=local
       - DB_HOST=sqlserver

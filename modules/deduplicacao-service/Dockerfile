@@ -5,7 +5,7 @@ WORKDIR /app
 RUN addgroup -S spring && adduser -S spring -G spring
 USER spring:spring
 
-COPY target/*.jar app.jar
+COPY modules/deduplicacao-service/target/*.jar app.jar
 
 EXPOSE 8080
 

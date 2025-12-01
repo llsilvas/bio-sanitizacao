@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true">
+    <!-- ================================================== -->
+    <!-- 1. SPRING PROPERTIES -->
+    <springProperty name="log.level.root" source="logging.level.root"/>
+    <springProperty name="log.level.bio"  source="logging.level.bio.prodesp"/>
+    <!-- 2. PROPRIEDADES GERAIS -->
+    <property name="LFR"         value="/opt/log/biometria_${HOSTNAME}.log"/>
+    <property name="LOG_PATTERN" value="%date %-5.5level [DEDUPLICACAO-SERVICE] [%45.45(%class{42}:%line)] [%X{breadcrumbId}] %msg%n"/>
+    <!-- 3. APPENDER & LOGGER PADRÃO (console) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <charset>UTF-8</charset>
+            <pattern>${LOG_PATTERN}</pattern>
+        </encoder>
+    </appender>
+    <logger name="bio.prodesp" level="${log.level.bio:-INFO}"/>
+    <root level="${log.level.root:-INFO}">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+    <!-- 4. PERFIL OPENSHIFT -->
+    <springProfile name="openshift">
+        <appender name="GELF" class="biz.paluch.logging.gelf.logback.GelfLogbackAppender">
+            <host>tcp:${GELF_SERVICE:-gelf-service}</host>
+            <port>12201</port>
+            <version>1.1</version>
+            <facility>Springboot</facility>
+            <extractStackTrace>true</extractStackTrace>
+            <filterStackTrace>true</filterStackTrace>
+            <mdcProfiling>true</mdcProfiling>
+            <includeFullMdc>true</includeFullMdc>
+            <timestampPattern>yyyy-MM-dd HH:mm:ss,SSS</timestampPattern>
+            <maximumMessageSize>8192</maximumMessageSize>
+            <additionalFields>msName=deduplicacao-service,msTag=backend,msGroup=deduplicacao-service</additionalFields>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>INFO</level>
+            </filter>
+        </appender>
+        <logger name="bio.prodesp" level="${log.level.bio:-INFO}"/>
+        <root level="${log.level.root:-INFO}">
+            <appender-ref ref="GELF"/>
+        </root>
+    </springProfile>
+    <!-- 5. PERFIL DOCKER -->
+    <springProfile name="docker">
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LFR}</file>
+            <encoder>
+                <charset>UTF-8</charset>
+                <pattern>${LOG_PATTERN}</pattern>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+                <fileNamePattern>${LFR}.%i</fileNamePattern>
+                <minIndex>1</minIndex>
+                <maxIndex>10</maxIndex>
+            </rollingPolicy>
+            <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+                <maxFileSize>10MB</maxFileSize>
+            </triggeringPolicy>
+        </appender>
+        <logger name="bio.prodesp" level="${log.level.bio:-INFO}"/>
+        <root level="${log.level.root:-INFO}">
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+</configuration>

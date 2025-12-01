@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deduplicacao-config
+  namespace: barramento-biometrico
+  labels:
+    app: deduplicacao-service
+    team: biometria
+    codigo: deduplicacao-service
+
+data:
+  SPRING_PROFILES_ACTIVE: "develop,eks"
+  DB_HOST: "sqlserver"
+  DB_PORT: "1433"
+  DB_NAME: "deduplicacao"
+  DB_USER: "sa"
+  DB_PASSWORD: "YourStrong@Passw0rd"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  OPENSEARCH_URL: "opensearch:9200"
+  OPENSEARCH_USER: "admin"
+  OPENSEARCH_PASSWORD: "Admin@123"
+  OPENSEARCH_SSL_ENABLED: "false"

@@ -132,7 +132,10 @@ public interface DeduplicacaoRequestMapper {
 
     /**
      * Converte posição de String (ex: "POLEGAR_DIREITO") para Integer (código da posição)
-     * TODO: Implementar mapeamento real baseado na tabela de códigos
+     *
+     * <p>Mapeamento baseado em padrão OSIA/ANSI-NIST:
+     * - Mão direita: 1-5 (polegar, indicador, médio, anelar, mínimo)
+     * - Mão esquerda: 6-10 (polegar, indicador, médio, anelar, mínimo)
      */
     default Integer convertPosicaoToInteger(String posicao) {
         if (posicao == null) {

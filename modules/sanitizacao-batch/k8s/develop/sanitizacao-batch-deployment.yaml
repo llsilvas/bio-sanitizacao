@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sanitizacao-batch-deployment
+  namespace: barramento-biometrico
+  labels:
+    app: sanitizacao-batch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sanitizacao-batch
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: sanitizacao-batch
+    spec:
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: ng-barr-biometrico-20251021132134545300000002
+      restartPolicy: Always
+      containers:
+        - name: sanitizacao-batch
+          image: 301678011937.dkr.ecr.sa-east-1.amazonaws.com/prodesp/sanitizacao-batch:latest
+          imagePullPolicy: Always
+          env:
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=70.0 -XX:+UseSerialGC -Xlog:gc*:stdout:time -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+          envFrom:
+            - configMapRef:
+                name: sanitizacao-batch-config
+            - secretRef:
+                name: sanitizacao-batch-secrets
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"

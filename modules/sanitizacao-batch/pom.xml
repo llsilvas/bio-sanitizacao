@@ -12,10 +12,10 @@
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
-    <artifactId>batch-processor</artifactId>
+    <artifactId>sanitizacao-batch</artifactId>
     <packaging>jar</packaging>
 
-    <name>Batch Processor</name>
+    <name>Sanitização Batch</name>
     <description>Processamento em lote com Spring Batch</description>
 
     <dependencies>

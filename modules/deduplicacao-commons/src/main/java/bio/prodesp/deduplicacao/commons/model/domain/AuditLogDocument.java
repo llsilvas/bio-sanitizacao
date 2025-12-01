@@ -100,7 +100,7 @@ public class AuditLogDocument implements Serializable {
      * <p>Exemplos:
      * <ul>
      *   <li>deduplicacao-service</li>
-     *   <li>batch-processor</li>
+     *   <li>sanitizacao-batch</li>
      *   <li>admin-user-12345</li>
      * </ul>
      */

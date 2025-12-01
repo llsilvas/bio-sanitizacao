@@ -9,7 +9,7 @@ import org.mapstruct.*;
  * Mapper MapStruct para conversão de ResultadoDeduplicacao (commons) para DeduplicacaoResponse (controller DTO)
  *
  * <p>Este mapper é usado pelo controller para transformar o resultado do serviço de deduplicação
- * em uma resposta HTTP adequada para o cliente (batch-processor ou outro consumidor da API).
+ * em uma resposta HTTP adequada para o cliente (sanitizacao-batch ou outro consumidor da API).
  */
 @Mapper(
     componentModel = "spring",

@@ -23,7 +23,7 @@
     <modules>
         <module>modules/deduplicacao-commons</module>
         <module>modules/deduplicacao-service</module>
-        <module>modules/batch-processor</module>
+        <module>modules/sanitizacao-batch</module>
     </modules>
 
     <properties>

@@ -63,9 +63,9 @@ class DeduplicacaoServiceTest {
     private DeduplicacaoService service;
 
     private ColetaMetadata coletaValida;
-    private static final String CPF_VALIDO = "12345678901";
+    private static final String CPF_VALIDO = "11144477735"; // CPF válido com dígitos verificadores corretos
     private static final String ID_COLETA = "COL-12345";
-    private static final String IDEMPOTENCY_KEY = "DEDUP:12345678901:COL-12345";
+    private static final String IDEMPOTENCY_KEY = "DEDUP:11144477735:COL-12345";
 
     @BeforeEach
     void setUp() {

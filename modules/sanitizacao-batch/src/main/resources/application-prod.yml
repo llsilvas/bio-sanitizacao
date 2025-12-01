@@ -1,6 +1,6 @@
 spring:
   application:
-    name: batch-processor
+    name: sanitizacao-batch
 
   batch:
     job:
@@ -187,6 +187,6 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
   file:
-    name: /var/log/batch-processor/application.log
+    name: /var/log/sanitizacao-batch/application.log
     max-size: 500MB
     max-history: 30
