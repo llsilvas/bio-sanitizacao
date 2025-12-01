@@ -115,18 +115,42 @@ public class DeduplicacaoService {
             log.warn("Critério de entrada não atendido: {}", e.getMessage());
 
             ResultadoDeduplicacao resultado = ResultadoDeduplicacao.invalido(
-                "Critério de entrada: " + e.getMessage()
+                    "Critério de entrada: " + e.getMessage()
             );
 
             // ✅ AUDITAR FALHA DE VALIDAÇÃO
             auditService.registrarErro(
-                "CRITERIO_ENTRADA",
-                coleta.getCpf(),
-                coleta.getIdColeta(),
-                e
+                    "CRITERIO_ENTRADA",
+                    coleta.getCpf(),
+                    coleta.getIdColeta(),
+                    e
             );
 
             return resultado;
+
+        }catch (ABISViolacaoUnicidadeException e){
+            log.warn("Violação de unicidade no ABIS: {}", e.getMessage());
+
+            ResultadoDeduplicacao resultado = ResultadoDeduplicacao.builder()
+                    .status(StatusValidacao.INVALIDA)
+                    .motivoRejeicao("Violação de unicidade no ABIS: " + e.getMessage())
+                    .build();
+
+            Exception auditException =
+                    (!(e.getCause() instanceof Exception)) ? e : (Exception) e.getCause();
+
+            // ✅ AUDITAR FALHA DE VALIDAÇÃO
+            auditService.registrarErro(
+                    "VIOLACAO_UNICIDADE_ABIS",
+                    coleta.getCpf(),
+                    coleta.getIdColeta(),
+                    auditException
+            );
+
+            coletaRepository.marcarInvalida(coleta.getIdColeta(), "Violação de unicidade no ABIS: " + e.getMessage());
+
+            return resultado;
+
 
         } catch (OSIAException e) {
             ResultadoDeduplicacao resultado = tratarErroOSIA(coleta, e);
@@ -383,23 +407,10 @@ public class DeduplicacaoService {
             return response.getEncounterId();
 
         } catch (OSIAException e) {
+
             // RN010 - Tratar falha no ABIS
             if (e.getStatusCode() == 409) {
                 log.error("Violação de unicidade no ABIS - CPF: {}", coleta.getCpf());
-
-                // ✅ MARCAR COMO INVÁLIDA NO OPENSEARCH
-                coletaRepository.marcarInvalida(
-                    coleta.getIdColeta(),
-                    "Violação de unicidade no ABIS: " + e.getMessage()
-                );
-
-                // ✅ AUDITAR VIOLAÇÃO DE UNICIDADE
-                auditService.registrarErro(
-                    "VIOLACAO_UNICIDADE_ABIS",
-                    coleta.getCpf(),
-                    coleta.getIdColeta(),
-                    e
-                );
 
                 throw new ABISViolacaoUnicidadeException(e.getMessage(), e);
             }
@@ -412,6 +423,13 @@ public class DeduplicacaoService {
      */
     private ResultadoDeduplicacao tratarErroOSIA(ColetaMetadata coleta, OSIAException e) {
         log.error("Erro na comunicação com OSIA - CPF: {}", coleta.getCpf(), e);
+
+        if(e instanceof ABISViolacaoUnicidadeException){
+            return ResultadoDeduplicacao.builder()
+                    .status(StatusValidacao.INVALIDA)
+                    .motivoRejeicao("Violação de unicidade no ABIS: " + e.getMessage())
+                    .build();
+        }
 
         // Erros recuperáveis (5xx) - marcar para reprocessamento
         if (e.isRetryable()) {
