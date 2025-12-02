@@ -134,6 +134,7 @@ public class DeduplicacaoService {
             validarCriteriosEntrada(coleta);
 
             // RN004 - Buscar encounters existentes
+            // encounters = coletas
             EncountersResponse encounters = osiaClient.buscarEncounters(coleta.getCpf());
 
             // RN004 - Verificação 1:1
